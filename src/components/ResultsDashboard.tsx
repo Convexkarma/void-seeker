@@ -18,7 +18,10 @@ interface ResultsDashboardProps {
 }
 
 export function ResultsDashboard({ result }: ResultsDashboardProps) {
-  const f = (result?.findings ?? {}) as Partial<ScanResult["findings"]>;
+  if (!result || !result.findings) {
+    return <div className="border border-border rounded-md bg-card p-4 text-xs font-mono text-muted-foreground">No results available.</div>;
+  }
+  const f = result.findings;
   const vulns = Array.isArray(f.vulnerabilities) ? f.vulnerabilities : [];
   const subs = Array.isArray(f.subdomains) ? f.subdomains : [];
   const ports = Array.isArray(f.ports) ? f.ports : [];
