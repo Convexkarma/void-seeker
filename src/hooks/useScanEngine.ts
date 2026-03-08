@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { ScanConfig, ScanStatus, ScanResult } from "@/types/scan";
-import { API, WS } from "@/config/backend";
+import { API, WS, mapModulesToBackend } from "@/config/backend";
+import { mapBackendResults, emptyFindings } from "@/lib/resultMapper";
 
 interface TerminalLine {
   module: string;
@@ -14,18 +15,39 @@ const emptyResult: ScanResult = {
   status: "idle",
   startedAt: "",
   progress: 0,
-  findings: {
-    subdomains: [],
-    ports: [],
-    vulnerabilities: [],
-    directories: [],
-    technologies: [],
-    screenshots: [],
-    dns: { a: [], aaaa: [], mx: [], ns: [], txt: [], cname: [], whois: { registrar: "", createdDate: "", expiryDate: "", nameServers: [] }, spf: false, dmarc: false, dkim: false },
-    secrets: [],
-    logs: [],
-  },
+  findings: emptyFindings,
 };
+
+/** Map backend WS message types to terminal-friendly color/text */
+function wsMessageToTerminalLine(msg: any): TerminalLine | null {
+  if (msg.type === "ping" || !msg.type) return null;
+
+  switch (msg.type) {
+    case "started":
+      return { module: "System", color: "terminal-cyan", text: `AutoRecon v2.0 — Target: ${msg.domain} | Modules: ${msg.total_modules}` };
+    case "module_start":
+      return { module: msg.module || "System", color: "terminal-blue", text: `[${msg.module}] Starting (${msg.index}/${msg.total})...` };
+    case "command":
+      return { module: msg.module || "System", color: "terminal-blue", text: `[${msg.module}] $ ${msg.command}` };
+    case "output":
+      return { module: msg.module || "System", color: "terminal-green", text: `[${msg.module}] ${msg.line}` };
+    case "module_skip":
+      return { module: msg.module || "System", color: "terminal-amber", text: `[${msg.module}] ⚠ Skipped: ${msg.reason}` };
+    case "module_complete":
+      return { module: msg.module || "System", color: "terminal-green", text: `[${msg.module}] ✓ Complete (${msg.lines || 0} lines)` };
+    case "module_error":
+      return { module: msg.module || "System", color: "terminal-red", text: `[${msg.module}] ✗ Error: ${msg.error}` };
+    case "scan_complete":
+      return { module: "System", color: "terminal-cyan", text: `[✓] Scan ${msg.status} in ${msg.duration || 0}s` };
+    case "cancelled":
+      return { module: "System", color: "terminal-red", text: `[✗] Scan cancelled` };
+    default:
+      // Fallback: if it has text/line, show it
+      if (msg.text) return { module: msg.module || "System", color: msg.color || "terminal-green", text: msg.text };
+      if (msg.line) return { module: msg.module || "System", color: "terminal-green", text: `[${msg.module || ""}] ${msg.line}` };
+      return null;
+  }
+}
 
 export function useScanEngine() {
   const [status, setStatus] = useState<ScanStatus>("idle");
@@ -61,14 +83,15 @@ export function useScanEngine() {
       const res = await fetch(API.scanResults(scanId));
       if (res.ok) {
         const data = await res.json();
+        const findings = mapBackendResults(data.results || data.findings);
         setResult({
           id: data.id || scanId,
           domain: data.domain || "",
           status: data.status || "completed",
-          startedAt: data.started_at || data.startedAt || "",
+          startedAt: data.started_at || data.startedAt || data.created_at || "",
           completedAt: data.completed_at || data.completedAt,
           progress: data.progress || 100,
-          findings: data.results || data.findings || emptyResult.findings,
+          findings,
         });
         setShowResults(true);
       }
@@ -86,20 +109,20 @@ export function useScanEngine() {
     setShowResults(false);
     setActiveModule("");
 
+    // Map frontend module IDs to backend tool names
+    const backendModules = mapModulesToBackend(config.modules);
+
     let scanId: string;
 
-    // Start scan via REST
     try {
       const res = await fetch(API.startScan, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           domain: config.domain,
-          modules: config.modules,
-          profile: config.profile,
+          modules: backendModules,
           wordlist: config.wordlist,
           threads: config.threads,
-          authorized: config.authorized,
         }),
       });
 
@@ -118,7 +141,7 @@ export function useScanEngine() {
       addLine({
         module: "System",
         color: "terminal-red",
-        text: `[Error] Failed to connect to backend: ${err.message}. Is the backend running on ${API.startScan}?`,
+        text: `[Error] Failed to connect to backend: ${err.message}. Is the backend running?`,
       });
       return;
     }
@@ -131,11 +154,10 @@ export function useScanEngine() {
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === "ping" || msg.type === "scan_complete") return;
-          if (!msg.text) return;
-          addLine(msg);
-          if (msg.module) {
-            setActiveModule(msg.module);
+          const line = wsMessageToTerminalLine(msg);
+          if (line) {
+            addLine(line);
+            if (msg.module) setActiveModule(msg.module);
           }
         } catch {
           // non-JSON message, ignore
@@ -161,9 +183,7 @@ export function useScanEngine() {
           const statusData = await res.json();
           setProgress(statusData.progress || 0);
           const mod = statusData.active_module || statusData.current_module;
-          if (mod) {
-            setActiveModule(mod);
-          }
+          if (mod) setActiveModule(mod);
 
           if (statusData.status === "completed" || statusData.status === "cancelled" || statusData.status === "failed") {
             setStatus(statusData.status as ScanStatus);

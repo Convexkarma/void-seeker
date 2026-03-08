@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Save, RefreshCw, Check, X } from "lucide-react";
+import { API } from "@/config/backend";
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -11,6 +12,7 @@ interface SettingsPageProps {
 interface ToolStatus {
   installed: boolean;
   path: string;
+  version?: string;
 }
 
 const API_KEY_FIELDS = [
@@ -23,7 +25,7 @@ const API_KEY_FIELDS = [
   { key: "github", label: "GitHub Token", placeholder: "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
 ];
 
-const TOOL_NAMES = ["nmap", "subfinder", "amass", "httpx", "nuclei", "gobuster", "whatweb", "gowitness", "wafw00f", "dnsx", "theharvester", "testssl.sh"];
+const TOOL_NAMES = ["nmap", "subfinder", "amass", "httpx", "nuclei", "gobuster", "whatweb", "gowitness", "wafw00f", "dnsx", "theHarvester", "testssl.sh"];
 
 export function SettingsPage({ onBack }: SettingsPageProps) {
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
@@ -37,8 +39,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const [checkingTools, setCheckingTools] = useState(false);
 
   useEffect(() => {
-    // Load settings from backend
-    fetch("http://localhost:8000/api/settings")
+    fetch(API.settings)
       .then(r => r.json())
       .then(config => {
         setApiKeys(config.api_keys || {});
@@ -56,11 +57,11 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const checkTools = async () => {
     setCheckingTools(true);
     try {
-      const r = await fetch("http://localhost:8000/api/tools/check", { method: "POST" });
+      const r = await fetch(API.toolsCheck, { method: "POST" });
       const data = await r.json();
       setToolStatus(data);
     } catch {
-      // Backend not running — show all as unknown
+      // Backend not running
     }
     setCheckingTools(false);
   };
@@ -68,7 +69,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const saveSettings = async () => {
     setSaving(true);
     try {
-      await fetch("http://localhost:8000/api/settings", {
+      await fetch(API.settings, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
