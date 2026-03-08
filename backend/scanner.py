@@ -32,17 +32,17 @@ SCANS_DIR = AUTORECON_DIR / "scans"
 
 COMMANDS = {
     "subfinder": (
-        "subfinder -d {domain} -silent -all -o {out}/subdomains_sf.txt"
+        "subfinder -d {domain} -silent -all -t {threads} -o {out}/subdomains_sf.txt"
     ),
     "amass": (
         "amass enum -passive -d {domain} -o {out}/subdomains_am.txt -timeout 10"
     ),
     "httpx": (
         "httpx -l {out}/subdomains_all.txt -silent -status-code -title "
-        "-tech-detect -content-length -o {out}/live_hosts.txt"
+        "-tech-detect -content-length -threads {threads} -o {out}/live_hosts.txt"
     ),
     "nmap": (
-        "nmap -sV -sC -T4 --open "
+        "nmap -sV -sC -T4 --open --min-parallelism {threads} "
         "-p 21,22,23,25,53,80,110,143,443,445,465,587,993,995,"
         "1433,1521,2375,2376,3000,3306,3389,4848,5432,5900,5985,"
         "6379,8080,8443,8888,9200,9300,11211,27017,50070 "
@@ -54,20 +54,21 @@ COMMANDS = {
     ),
     "nuclei": (
         "nuclei -u http://{domain} -severity low,medium,high,critical "
-        "-o {out}/nuclei.txt -silent -no-color"
+        "-c {threads} -o {out}/nuclei.txt -silent -no-color"
     ),
     "whatweb": (
         "whatweb -a 3 http://{domain} --log-json={out}/whatweb.json --quiet"
     ),
     "gowitness": (
-        "gowitness file -f {out}/subdomains_all.txt -P {out}/screenshots/ --quiet"
+        "gowitness file -f {out}/subdomains_all.txt -P {out}/screenshots/ "
+        "--threads {threads} --quiet"
     ),
     "wafw00f": (
         "wafw00f http://{domain} -o {out}/waf.txt -a"
     ),
     "dnsx": (
         "dnsx -d {domain} -a -aaaa -mx -ns -txt -cname -ptr -soa "
-        "-o {out}/dns.txt -silent"
+        "-t {threads} -o {out}/dns.txt -silent"
     ),
     "theHarvester": (
         "theHarvester -d {domain} -b all -f {out}/harvester"
