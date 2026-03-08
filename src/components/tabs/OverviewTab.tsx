@@ -26,7 +26,7 @@ export function OverviewTab({ result }: OverviewTabProps) {
   return (
     <div className="space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {cards.map(c => (
           <div key={c.label} className="bg-secondary/50 border border-border rounded-md p-3 text-center">
             <c.icon className={`h-5 w-5 mx-auto mb-2 ${c.color}`} />
