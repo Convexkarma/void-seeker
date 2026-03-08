@@ -107,7 +107,7 @@ async def get_scan(scan_id: str) -> Optional[Dict[str, Any]]:
 
 async def list_scans(limit: int = 100) -> List[Dict[str, Any]]:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             cursor = await db.execute(
                 "SELECT data FROM scans ORDER BY created_at DESC LIMIT ?", (limit,)
             )
