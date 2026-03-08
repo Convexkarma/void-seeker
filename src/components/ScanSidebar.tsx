@@ -10,7 +10,7 @@ interface ScanSidebarProps {
 }
 
 function getIcon(name: string): LucideIcon {
-  return (Icons as Record<string, LucideIcon>)[name] || Icons.Circle;
+  return (Icons as unknown as Record<string, LucideIcon>)[name] || Icons.Circle;
 }
 
 const categoryLabels: Record<string, string> = {
