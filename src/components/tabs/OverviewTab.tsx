@@ -37,7 +37,7 @@ export function OverviewTab({ result }: OverviewTabProps) {
       </div>
 
       {/* Attack surface + severity */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Score */}
         <div className="bg-secondary/50 border border-border rounded-md p-4">
           <h3 className="text-xs font-mono text-muted-foreground mb-3 uppercase">Attack Surface Score</h3>
