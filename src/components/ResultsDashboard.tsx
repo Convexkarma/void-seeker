@@ -9,6 +9,7 @@ import { TechTab } from "./tabs/TechTab";
 import { DnsTab } from "./tabs/DnsTab";
 import { SecretsTab } from "./tabs/SecretsTab";
 import { LogsTab } from "./tabs/LogsTab";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 interface ResultsDashboardProps {
   result: ScanResult;
@@ -19,47 +20,52 @@ export function ResultsDashboard({ result }: ResultsDashboardProps) {
   const critCount = f.vulnerabilities.filter(v => v.severity === "critical").length;
   const highCount = f.vulnerabilities.filter(v => v.severity === "high").length;
 
+  const tabs = [
+    { value: "overview", label: "Overview" },
+    { value: "subdomains", label: `Subs (${f.subdomains.length})` },
+    { value: "ports", label: `Ports (${f.ports.length})` },
+    { value: "vulns", label: `Vulns (${f.vulnerabilities.length})`, alert: critCount + highCount > 0 },
+    { value: "dirs", label: `Dirs (${f.directories.length})` },
+    { value: "tech", label: `Tech (${f.technologies.length})` },
+    { value: "dns", label: "DNS" },
+    { value: "secrets", label: `Secrets (${f.secrets.length})` },
+    { value: "logs", label: "Logs" },
+  ];
+
   return (
     <div className="border border-border rounded-md bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-primary" />
-          <h2 className="text-sm font-mono font-semibold text-card-foreground">
+      <div className="px-3 sm:px-4 py-3 border-b border-border flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+          <h2 className="text-xs sm:text-sm font-mono font-semibold text-card-foreground truncate">
             Results — {result.domain}
           </h2>
         </div>
-        <span className="text-[10px] font-mono text-muted-foreground">
-          Completed {result.completedAt ? new Date(result.completedAt).toLocaleTimeString() : ""}
+        <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap">
+          {result.completedAt ? new Date(result.completedAt).toLocaleTimeString() : ""}
         </span>
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <div className="border-b border-border overflow-x-auto">
-          <TabsList className="bg-transparent h-auto p-0 rounded-none flex">
-            {[
-              { value: "overview", label: "Overview" },
-              { value: "subdomains", label: `Subdomains (${f.subdomains.length})` },
-              { value: "ports", label: `Ports (${f.ports.length})` },
-              { value: "vulns", label: `Vulns (${f.vulnerabilities.length})`, alert: critCount + highCount > 0 },
-              { value: "dirs", label: `Dirs (${f.directories.length})` },
-              { value: "tech", label: `Tech (${f.technologies.length})` },
-              { value: "dns", label: "DNS" },
-              { value: "secrets", label: `Secrets (${f.secrets.length})` },
-              { value: "logs", label: "Logs" },
-            ].map(tab => (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className="font-mono text-[11px] px-3 py-2.5 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary text-muted-foreground hover:text-card-foreground whitespace-nowrap"
-              >
-                {tab.label}
-                {tab.alert && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-destructive inline-block" />}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+        <div className="border-b border-border">
+          <ScrollArea className="w-full">
+            <TabsList className="bg-transparent h-auto p-0 rounded-none inline-flex w-max">
+              {tabs.map(tab => (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  className="font-mono text-[10px] sm:text-[11px] px-2.5 sm:px-3 py-2.5 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary text-muted-foreground hover:text-card-foreground whitespace-nowrap"
+                >
+                  {tab.label}
+                  {tab.alert && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-destructive inline-block" />}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <ScrollBar orientation="horizontal" className="h-1" />
+          </ScrollArea>
         </div>
 
-        <div className="p-4">
+        <div className="p-3 sm:p-4 overflow-x-auto">
           <TabsContent value="overview"><OverviewTab result={result} /></TabsContent>
           <TabsContent value="subdomains"><SubdomainsTab subdomains={f.subdomains} /></TabsContent>
           <TabsContent value="ports"><PortsTab ports={f.ports} /></TabsContent>
