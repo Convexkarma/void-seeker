@@ -1,5 +1,5 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScanResult } from "@/types/scan";
+import { ScanResult, ScanFindings } from "@/types/scan";
 import { OverviewTab } from "./tabs/OverviewTab";
 import { SubdomainsTab } from "./tabs/SubdomainsTab";
 import { PortsTab } from "./tabs/PortsTab";
@@ -13,27 +13,51 @@ import { LogsTab } from "./tabs/LogsTab";
 import { ReportGenerator } from "./ReportGenerator";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
-// ResultsDashboard v2 — guarded
+const DEFAULT_DNS = {
+  a: [] as string[],
+  aaaa: [] as string[],
+  mx: [] as { host: string; priority: number }[],
+  ns: [] as string[],
+  txt: [] as string[],
+  cname: [] as string[],
+  whois: { registrar: "", createdDate: "", expiryDate: "", nameServers: [] as string[] },
+  spf: false,
+  dmarc: false,
+  dkim: false,
+};
+
+function safeArray<T>(val: unknown): T[] {
+  return Array.isArray(val) ? (val as T[]) : [];
+}
+
 interface ResultsDashboardProps {
   result: ScanResult;
 }
 
-export function ResultsDashboard({ result }: ResultsDashboardProps) {
-  if (!result || !result.findings) {
-    return <div className="border border-border rounded-md bg-card p-4 text-xs font-mono text-muted-foreground">No results available.</div>;
+export function ResultsDashboard(props: ResultsDashboardProps) {
+  const result = props?.result;
+
+  if (!result) {
+    return (
+      <div className="border border-border rounded-md bg-card p-4 text-xs font-mono text-muted-foreground">
+        No scan result provided.
+      </div>
+    );
   }
-  const f = result.findings;
-  const vulns = Array.isArray(f.vulnerabilities) ? f.vulnerabilities : [];
-  const subs = Array.isArray(f.subdomains) ? f.subdomains : [];
-  const ports = Array.isArray(f.ports) ? f.ports : [];
-  const dirs = Array.isArray(f.directories) ? f.directories : [];
-  const tech = Array.isArray(f.technologies) ? f.technologies : [];
-  const screenshots = Array.isArray(f.screenshots) ? f.screenshots : [];
-  const secrets = Array.isArray(f.secrets) ? f.secrets : [];
-  const logs = Array.isArray(f.logs) ? f.logs : [];
-  const dns = f.dns ?? { a: [], aaaa: [], mx: [], ns: [], txt: [], cname: [], whois: { registrar: "", createdDate: "", expiryDate: "", nameServers: [] }, spf: false, dmarc: false, dkim: false };
-  const critCount = vulns.filter(v => v.severity === "critical").length;
-  const highCount = vulns.filter(v => v.severity === "high").length;
+
+  const raw: Record<string, unknown> = (result.findings as any) || {};
+  const vulns = safeArray(raw.vulnerabilities);
+  const subs = safeArray(raw.subdomains);
+  const ports = safeArray(raw.ports);
+  const dirs = safeArray(raw.directories);
+  const tech = safeArray(raw.technologies);
+  const screenshots = safeArray(raw.screenshots);
+  const secrets = safeArray(raw.secrets);
+  const logs = safeArray(raw.logs);
+  const dns = (raw.dns as ScanFindings["dns"]) ?? DEFAULT_DNS;
+
+  const critCount = (vulns as any[]).filter((v: any) => v?.severity === "critical").length;
+  const highCount = (vulns as any[]).filter((v: any) => v?.severity === "high").length;
 
   const tabs = [
     { value: "overview", label: "Overview" },
@@ -54,7 +78,7 @@ export function ResultsDashboard({ result }: ResultsDashboardProps) {
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
           <h2 className="text-xs sm:text-sm font-mono font-semibold text-card-foreground truncate">
-            Results — {result.domain}
+            Results — {result.domain || "unknown"}
           </h2>
         </div>
         <div className="flex items-center gap-2">
@@ -86,15 +110,15 @@ export function ResultsDashboard({ result }: ResultsDashboardProps) {
 
         <div className="p-3 sm:p-4 overflow-x-auto">
           <TabsContent value="overview"><OverviewTab result={result} /></TabsContent>
-          <TabsContent value="subdomains"><SubdomainsTab subdomains={subs} /></TabsContent>
-          <TabsContent value="ports"><PortsTab ports={ports} /></TabsContent>
-          <TabsContent value="vulns"><VulnsTab vulnerabilities={vulns} /></TabsContent>
-          <TabsContent value="dirs"><DirectoriesTab directories={dirs} /></TabsContent>
-          <TabsContent value="tech"><TechTab technologies={tech} /></TabsContent>
-          <TabsContent value="screenshots"><ScreenshotsTab screenshots={screenshots} /></TabsContent>
-          <TabsContent value="dns"><DnsTab dns={dns} /></TabsContent>
-          <TabsContent value="secrets"><SecretsTab secrets={secrets} /></TabsContent>
-          <TabsContent value="logs"><LogsTab logs={logs} /></TabsContent>
+          <TabsContent value="subdomains"><SubdomainsTab subdomains={subs as any} /></TabsContent>
+          <TabsContent value="ports"><PortsTab ports={ports as any} /></TabsContent>
+          <TabsContent value="vulns"><VulnsTab vulnerabilities={vulns as any} /></TabsContent>
+          <TabsContent value="dirs"><DirectoriesTab directories={dirs as any} /></TabsContent>
+          <TabsContent value="tech"><TechTab technologies={tech as any} /></TabsContent>
+          <TabsContent value="screenshots"><ScreenshotsTab screenshots={screenshots as any} /></TabsContent>
+          <TabsContent value="dns"><DnsTab dns={dns as any} /></TabsContent>
+          <TabsContent value="secrets"><SecretsTab secrets={secrets as any} /></TabsContent>
+          <TabsContent value="logs"><LogsTab logs={logs as any} /></TabsContent>
         </div>
       </Tabs>
     </div>
