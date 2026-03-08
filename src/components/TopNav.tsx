@@ -52,6 +52,25 @@ export function TopNav({ activeScans, onHistoryClick, onSettingsClick, onModules
         <Badge variant="outline" className="text-[9px] font-mono px-1.5 py-0 border-primary/20 text-primary/60 hidden sm:inline-flex">
           LOCAL
         </Badge>
+        <Badge
+          variant="outline"
+          className={`text-[9px] font-mono px-1.5 py-0 hidden sm:inline-flex items-center gap-1 ${
+            backendStatus === "online"
+              ? "border-green-500/30 text-green-500"
+              : backendStatus === "offline"
+              ? "border-destructive/30 text-destructive"
+              : "border-muted-foreground/30 text-muted-foreground"
+          }`}
+        >
+          {backendStatus === "online" ? (
+            <Wifi className="h-2.5 w-2.5" />
+          ) : backendStatus === "offline" ? (
+            <WifiOff className="h-2.5 w-2.5" />
+          ) : (
+            <Wifi className="h-2.5 w-2.5 animate-pulse" />
+          )}
+          {backendStatus === "online" ? "CONNECTED" : backendStatus === "offline" ? "OFFLINE" : "CHECKING"}
+        </Badge>
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
