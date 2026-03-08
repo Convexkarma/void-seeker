@@ -1,36 +1,35 @@
 """
 AutoRecon - main.py
-FastAPI Backend — All endpoints for scan management, tools, settings, reports
+FastAPI backend — scan management, tools, settings, reports, terminals.
 Run: uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 """
 
 import asyncio
 import json
 import os
-import uuid
 import shutil
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from db import init_db, get_scan, list_scans, save_scan, update_scan, delete_scan_db
+from db import delete_scan_db, get_scan, init_db, list_scans, save_scan, update_scan
+from report import generate_report
 from scanner import ScanOrchestrator, active_scans
 from terminal import TerminalManager
-from report import generate_report
 
 # ── App Setup ─────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="AutoRecon API", version="1.0.0", docs_url="/api/docs")
+app = FastAPI(title="AutoRecon API", version="2.0.0", docs_url="/api/docs")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,14 +44,18 @@ SCANS_DIR.mkdir(exist_ok=True)
 terminal_manager = TerminalManager()
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 @app.on_event("startup")
 async def startup():
     await init_db()
-    print("\n\033[32m[+] AutoRecon backend started on http://127.0.0.1:8000\033[0m")
+    print("\n\033[32m[+] AutoRecon v2.0 backend started on http://127.0.0.1:8000\033[0m")
     print("\033[36m[*] API docs: http://127.0.0.1:8000/api/docs\033[0m\n")
 
 
-# ── Pydantic Models ───────────────────────────────────────────────────────────
+# ── Models ────────────────────────────────────────────────────────────────────
 
 class ScanRequest(BaseModel):
     domain: str
@@ -83,7 +86,7 @@ class SettingsModel(BaseModel):
 
 class ReportRequest(BaseModel):
     scan_id: str
-    format: str = "html"  # html | pdf | json | md
+    format: str = "html"
 
 
 class CompareRequest(BaseModel):
@@ -95,7 +98,6 @@ class CompareRequest(BaseModel):
 
 @app.post("/api/scan/start")
 async def start_scan(req: ScanRequest):
-    """Start a new automated recon scan."""
     if not req.domain or "." not in req.domain:
         raise HTTPException(400, "Invalid domain")
 
@@ -109,14 +111,13 @@ async def start_scan(req: ScanRequest):
         "stealth": req.stealth,
         "proxy": req.proxy,
         "status": "running",
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
+        "created_at": _now(),
+        "updated_at": _now(),
         "results": {},
         "progress": 0,
         "current_module": "",
         "duration": 0,
     }
-
     await save_scan(scan_data)
 
     orchestrator = ScanOrchestrator(
@@ -137,13 +138,11 @@ async def start_scan(req: ScanRequest):
 
 @app.get("/api/scan/history")
 async def scan_history():
-    """List all past scans."""
     return await list_scans()
 
 
 @app.get("/api/scan/{scan_id}/status")
 async def scan_status(scan_id: str):
-    """Poll current scan status and progress."""
     scan = await get_scan(scan_id)
     if not scan:
         raise HTTPException(404, "Scan not found")
@@ -157,7 +156,6 @@ async def scan_status(scan_id: str):
 
 @app.get("/api/scan/{scan_id}/results")
 async def scan_results(scan_id: str):
-    """Get full scan results."""
     scan = await get_scan(scan_id)
     if not scan:
         raise HTTPException(404, "Scan not found")
@@ -166,9 +164,7 @@ async def scan_results(scan_id: str):
 
 @app.delete("/api/scan/{scan_id}")
 async def delete_scan(scan_id: str):
-    """Delete a scan from history."""
     await delete_scan_db(scan_id)
-    # Also remove output files
     scan_dir = SCANS_DIR / scan_id
     if scan_dir.exists():
         shutil.rmtree(scan_dir, ignore_errors=True)
@@ -177,7 +173,6 @@ async def delete_scan(scan_id: str):
 
 @app.post("/api/scan/{scan_id}/cancel")
 async def cancel_scan(scan_id: str):
-    """Cancel a running scan."""
     if scan_id in active_scans:
         await active_scans[scan_id].cancel()
         return {"cancelled": scan_id}
@@ -186,72 +181,55 @@ async def cancel_scan(scan_id: str):
 
 @app.post("/api/scan/compare")
 async def compare_scans(req: CompareRequest):
-    """Diff two scans — return new/removed findings."""
     a = await get_scan(req.scan_id_a)
     b = await get_scan(req.scan_id_b)
     if not a or not b:
         raise HTTPException(404, "One or both scans not found")
 
-    def get_subs(scan):
+    def _subs(scan):
         s = set()
         for m in ("subfinder", "amass"):
             for sub in scan.get("results", {}).get(m, {}).get("subdomains", []):
                 s.add(sub)
         return s
 
-    def get_ports(scan):
+    def _ports(scan):
         return {f"{p['port']}/{p['protocol']}" for p in scan.get("results", {}).get("nmap", {}).get("ports", [])}
 
-    def get_vulns(scan):
+    def _vulns(scan):
         return {v.get("template", "") + v.get("url", "") for v in scan.get("results", {}).get("nuclei", {}).get("findings", [])}
 
-    subs_a, subs_b = get_subs(a), get_subs(b)
-    ports_a, ports_b = get_ports(a), get_ports(b)
-    vulns_a, vulns_b = get_vulns(a), get_vulns(b)
+    sa, sb = _subs(a), _subs(b)
+    pa, pb = _ports(a), _ports(b)
+    va, vb = _vulns(a), _vulns(b)
 
     return {
         "scan_a": {"id": req.scan_id_a, "domain": a["domain"], "date": a["created_at"]},
         "scan_b": {"id": req.scan_id_b, "domain": b["domain"], "date": b["created_at"]},
         "diff": {
-            "subdomains": {
-                "new": list(subs_b - subs_a),
-                "removed": list(subs_a - subs_b),
-                "total_a": len(subs_a),
-                "total_b": len(subs_b),
-            },
-            "ports": {
-                "new": list(ports_b - ports_a),
-                "removed": list(ports_a - ports_b),
-            },
-            "vulns": {
-                "new": list(vulns_b - vulns_a),
-                "removed": list(vulns_a - vulns_b),
-            },
-        }
+            "subdomains": {"new": list(sb - sa), "removed": list(sa - sb), "total_a": len(sa), "total_b": len(sb)},
+            "ports": {"new": list(pb - pa), "removed": list(pa - pb)},
+            "vulns": {"new": list(vb - va), "removed": list(va - vb)},
+        },
     }
 
 
-# ── WebSocket: Live Scan Stream ───────────────────────────────────────────────
+# ── WebSocket: Live Scan Stream ──────────────────────────────────────────────
 
 @app.websocket("/ws/scan/{scan_id}")
 async def scan_websocket(websocket: WebSocket, scan_id: str):
-    """Stream live scan output to browser via WebSocket."""
     await websocket.accept()
     try:
         if scan_id not in active_scans:
-            # Send current state for completed scans
             scan = await get_scan(scan_id)
             if scan:
                 await websocket.send_text(json.dumps({
-                    "type": "scan_complete",
-                    "status": scan["status"],
-                    "scan_id": scan_id,
+                    "type": "scan_complete", "status": scan["status"], "scan_id": scan_id,
                 }))
             return
 
-        queue = asyncio.Queue()
+        queue: asyncio.Queue = asyncio.Queue()
         active_scans[scan_id].add_subscriber(queue)
-
         try:
             while True:
                 try:
@@ -260,7 +238,6 @@ async def scan_websocket(websocket: WebSocket, scan_id: str):
                         break
                     await websocket.send_text(json.dumps(msg))
                 except asyncio.TimeoutError:
-                    # Keepalive ping
                     await websocket.send_text(json.dumps({"type": "ping"}))
         finally:
             if scan_id in active_scans:
@@ -268,15 +245,14 @@ async def scan_websocket(websocket: WebSocket, scan_id: str):
 
     except WebSocketDisconnect:
         pass
-    except Exception as e:
-        print(f"[!] WebSocket error for scan {scan_id}: {e}")
+    except Exception as exc:
+        print(f"[!] WebSocket error for scan {scan_id}: {exc}")
 
 
-# ── WebSocket: PTY Terminal ───────────────────────────────────────────────────
+# ── WebSocket: PTY Terminal ──────────────────────────────────────────────────
 
 @app.websocket("/ws/terminal/{session_id}")
 async def terminal_websocket(websocket: WebSocket, session_id: str):
-    """Bidirectional PTY shell — full interactive terminal in browser."""
     await websocket.accept()
     await terminal_manager.handle(websocket, session_id)
 
@@ -292,34 +268,27 @@ TOOLS_LIST = [
 
 @app.post("/api/tools/check")
 async def check_tools():
-    """Check which tools are installed on the system."""
-    results = {}
-
-    async def check_one(tool: str):
+    async def _check(tool: str):
         path = shutil.which(tool)
         version = None
         if path:
             try:
                 proc = await asyncio.create_subprocess_exec(
                     tool, "--version",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 )
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=4)
-                raw = (out or err).decode("utf-8", errors="replace")
-                version = raw.strip().split("\n")[0][:100]
+                version = (out or err).decode("utf-8", errors="replace").strip().split("\n")[0][:100]
             except Exception:
                 version = "installed"
         return tool, {"installed": bool(path), "path": path or "", "version": version or ""}
 
-    tasks = [check_one(t) for t in TOOLS_LIST]
-    tool_results = await asyncio.gather(*tasks)
-    return dict(tool_results)
+    results = await asyncio.gather(*[_check(t) for t in TOOLS_LIST])
+    return dict(results)
 
 
 @app.post("/api/tools/install")
 async def install_tool(data: dict):
-    """Trigger install of a specific tool via setup.sh snippet."""
     tool = data.get("tool", "")
     install_cmds = {
         "nmap": "sudo apt-get install -y nmap",
@@ -337,7 +306,7 @@ async def install_tool(data: dict):
     }
     cmd = install_cmds.get(tool)
     if not cmd:
-        raise HTTPException(400, f"No install recipe for tool: {tool}")
+        raise HTTPException(400, f"No install recipe for: {tool}")
     return {"tool": tool, "command": cmd, "message": f"Run in terminal: {cmd}"}
 
 
@@ -345,7 +314,6 @@ async def install_tool(data: dict):
 
 @app.get("/api/screenshot")
 async def get_screenshot(path: str):
-    """Serve screenshot files."""
     p = Path(path)
     if not p.exists() or not str(p).startswith(str(AUTORECON_DIR)):
         raise HTTPException(404, "Screenshot not found")
@@ -356,7 +324,6 @@ async def get_screenshot(path: str):
 
 @app.get("/api/settings")
 async def get_settings():
-    """Get saved API keys and config."""
     if CONFIG_FILE.exists():
         try:
             return json.loads(CONFIG_FILE.read_text())
@@ -367,7 +334,6 @@ async def get_settings():
 
 @app.post("/api/settings")
 async def save_settings(settings: SettingsModel):
-    """Save API keys and config to ~/.autorecon/config.json."""
     CONFIG_FILE.write_text(json.dumps(settings.model_dump(), indent=2))
     return {"saved": True}
 
@@ -376,28 +342,22 @@ async def save_settings(settings: SettingsModel):
 
 @app.post("/api/report/generate")
 async def gen_report(req: ReportRequest):
-    """Generate HTML, PDF, JSON, or Markdown report for a scan."""
     scan = await get_scan(req.scan_id)
     if not scan:
         raise HTTPException(404, "Scan not found")
     if req.format not in ("html", "pdf", "json", "md"):
         raise HTTPException(400, f"Invalid format: {req.format}")
-
     output_path = await generate_report(scan, req.format)
-    return FileResponse(
-        output_path,
-        filename=Path(output_path).name,
-        media_type="application/octet-stream",
-    )
+    return FileResponse(output_path, filename=Path(output_path).name, media_type="application/octet-stream")
 
 
-# ── Health Check ──────────────────────────────────────────────────────────────
+# ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/health")
 async def health():
     return {
         "status": "ok",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "active_scans": len(active_scans),
         "autorecon_dir": str(AUTORECON_DIR),
     }
