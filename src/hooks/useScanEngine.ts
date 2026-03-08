@@ -40,7 +40,7 @@ export function useScanEngine() {
 
   const cleanup = useCallback(() => {
     if (wsRef.current) {
-      wsRef.current.close();
+      try { wsRef.current.close(); } catch {}
       wsRef.current = null;
     }
     if (pollingRef.current) {
@@ -49,12 +49,18 @@ export function useScanEngine() {
     }
   }, []);
 
+  const addLine = useCallback((line: TerminalLine) => {
+    setTerminalLines((prev) => {
+      const next = [...prev, line];
+      return next.length > 1000 ? next.slice(-800) : next;
+    });
+  }, []);
+
   const fetchResults = useCallback(async (scanId: string) => {
     try {
       const res = await fetch(API.scanResults(scanId));
       if (res.ok) {
         const data = await res.json();
-        // Map backend response to ScanResult shape
         setResult({
           id: data.id || scanId,
           domain: data.domain || "",
@@ -71,7 +77,7 @@ export function useScanEngine() {
     }
   }, []);
 
-  const startScan = useCallback((config: ScanConfig) => {
+  const startScan = useCallback(async (config: ScanConfig) => {
     if (!config.authorized) return;
 
     setStatus("running");
@@ -80,85 +86,98 @@ export function useScanEngine() {
     setShowResults(false);
     setActiveModule("");
 
+    let scanId: string;
+
     // Start scan via REST
-    fetch(API.startScan, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        domain: config.domain,
-        modules: config.modules,
-        profile: config.profile,
-        wordlist: config.wordlist,
-        threads: config.threads,
-        authorized: config.authorized,
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        const scanId = data.scan_id;
-        scanIdRef.current = scanId;
-
-        // Connect WebSocket for live terminal output
-        const ws = new WebSocket(WS.scan(scanId));
-        wsRef.current = ws;
-
-        ws.onmessage = (event) => {
-          try {
-            const msg = JSON.parse(event.data);
-            // Skip non-terminal messages (ping, scan_complete, etc.)
-            if (msg.type === "ping" || msg.type === "scan_complete") return;
-            if (!msg.text) return;
-            setTerminalLines((prev) => {
-              const next = [...prev, msg];
-              // Cap at 1000 lines to prevent memory/render issues
-              return next.length > 1000 ? next.slice(-800) : next;
-            });
-            if (msg.module) {
-              setActiveModule(msg.module);
-            }
-          } catch {
-            // non-JSON message, ignore
-          }
-        };
-
-        ws.onerror = () => {
-          console.warn("WebSocket error — falling back to polling");
-        };
-
-        // Poll status for progress updates
-        pollingRef.current = setInterval(async () => {
-          try {
-            const res = await fetch(API.scanStatus(scanId));
-            if (res.ok) {
-              const statusData = await res.json();
-              setProgress(statusData.progress || 0);
-              const mod = statusData.active_module || statusData.current_module;
-              if (mod) {
-                setActiveModule(mod);
-              }
-
-              if (statusData.status === "completed" || statusData.status === "cancelled" || statusData.status === "failed") {
-                setStatus(statusData.status);
-                setProgress(100);
-                setActiveModule("");
-                cleanup();
-                await fetchResults(scanId);
-              }
-            }
-          } catch {
-            // polling error, will retry
-          }
-        }, 2000);
-      })
-      .catch((err) => {
-        console.error("Failed to start scan:", err);
-        setStatus("failed");
-        setTerminalLines((prev) => [
-          ...prev,
-          { module: "System", color: "terminal-red", text: `[Error] Failed to connect to backend: ${err.message}. Is the backend running?` },
-        ]);
+    try {
+      const res = await fetch(API.startScan, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          domain: config.domain,
+          modules: config.modules,
+          profile: config.profile,
+          wordlist: config.wordlist,
+          threads: config.threads,
+          authorized: config.authorized,
+        }),
       });
-  }, [cleanup, fetchResults]);
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "Unknown error");
+        throw new Error(`Backend returned ${res.status}: ${errText}`);
+      }
+
+      const data = await res.json();
+      scanId = data.scan_id;
+      if (!scanId) throw new Error("No scan_id in response");
+      scanIdRef.current = scanId;
+    } catch (err: any) {
+      console.error("Failed to start scan:", err);
+      setStatus("failed");
+      addLine({
+        module: "System",
+        color: "terminal-red",
+        text: `[Error] Failed to connect to backend: ${err.message}. Is the backend running on ${API.startScan}?`,
+      });
+      return;
+    }
+
+    // Connect WebSocket for live terminal output
+    try {
+      const ws = new WebSocket(WS.scan(scanId));
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "ping" || msg.type === "scan_complete") return;
+          if (!msg.text) return;
+          addLine(msg);
+          if (msg.module) {
+            setActiveModule(msg.module);
+          }
+        } catch {
+          // non-JSON message, ignore
+        }
+      };
+
+      ws.onerror = () => {
+        console.warn("WebSocket error — falling back to polling only");
+      };
+
+      ws.onclose = () => {
+        wsRef.current = null;
+      };
+    } catch (wsErr) {
+      console.warn("WebSocket connection failed:", wsErr);
+    }
+
+    // Poll status for progress updates
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(API.scanStatus(scanId));
+        if (res.ok) {
+          const statusData = await res.json();
+          setProgress(statusData.progress || 0);
+          const mod = statusData.active_module || statusData.current_module;
+          if (mod) {
+            setActiveModule(mod);
+          }
+
+          if (statusData.status === "completed" || statusData.status === "cancelled" || statusData.status === "failed") {
+            setStatus(statusData.status as ScanStatus);
+            setProgress(100);
+            setActiveModule("");
+            cleanup();
+            await fetchResults(scanId);
+          }
+        }
+      } catch {
+        // polling error, will retry
+      }
+    }, 2000);
+  }, [cleanup, fetchResults, addLine]);
 
   const cancelScan = useCallback(async () => {
     const scanId = scanIdRef.current;
