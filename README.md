@@ -1,73 +1,157 @@
-# Welcome to your Lovable project
+# AutoRecon — Automated Reconnaissance Platform
 
-## Project info
+A web-based recon tool that orchestrates popular security scanners (subfinder, nmap, gobuster, nuclei, etc.) with a real-time terminal UI and results dashboard.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+---
 
-## How can I edit this code?
+## Architecture
 
-There are several ways of editing your application.
+```
+Frontend (React + Vite)  ←→  Backend (FastAPI + WebSocket)  ←→  OS recon tools
+   :8080                        :8000
+```
 
-**Use Lovable**
+## Prerequisites
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+| Requirement | Version |
+|---|---|
+| **Node.js** | 18+ |
+| **Python** | 3.10+ |
+| **pip** | latest |
 
-Changes made via Lovable will be committed automatically to this repo.
+### Recon tools (install whichever you need)
 
-**Use your preferred IDE**
+```bash
+# Subdomain enumeration
+sudo apt install -y subfinder amass
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+# Port scanning
+sudo apt install -y nmap
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+# Directory brute-forcing
+sudo apt install -y gobuster
 
-Follow these steps:
+# Vulnerability scanning
+GO111MODULE=on go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
+# Tech fingerprinting
+sudo apt install -y whatweb
+
+# DNS
+GO111MODULE=on go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+
+# HTTP probing
+GO111MODULE=on go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+
+# Screenshots
+go install github.com/sensepost/gowitness@latest
+
+# WAF detection
+pip install wafw00f
+
+# Email harvesting
+pip install theHarvester
+
+# SSL testing
+sudo apt install -y testssl.sh
+```
+
+> Tools that are not installed will be automatically skipped during scans.
+
+---
+
+## Quick Start
+
+### 1. Clone the repo
+
+```bash
 git clone <YOUR_GIT_URL>
+cd void-seeker
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### 2. Start the backend
 
-# Step 3: Install the necessary dependencies.
-npm i
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+The API will be available at `http://localhost:8000`. Check `http://localhost:8000/docs` for the interactive Swagger UI.
+
+### 3. Start the frontend
+
+```bash
+# In a new terminal, from the project root
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The UI will be available at `http://localhost:8080`.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### 4. Run a scan
 
-**Use GitHub Codespaces**
+1. Open `http://localhost:8080` in your browser.
+2. Enter a target domain (make sure you have authorization).
+3. Select the modules you want to run.
+4. Check the authorization box and click **Launch Scan**.
+5. Watch real-time output in the terminal window.
+6. View parsed results in the dashboard tabs once the scan completes.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+---
 
-## What technologies are used for this project?
+## Project Structure
 
-This project is built with:
+```
+├── backend/
+│   ├── main.py            # FastAPI app, REST + WebSocket endpoints
+│   ├── scanner.py         # Scan orchestration, spawns OS processes
+│   ├── parser.py          # Parses tool output into structured data
+│   ├── db.py              # SQLite database (scan history, logs)
+│   ├── report.py          # HTML/PDF/JSON/Markdown report generation
+│   ├── terminal.py        # Interactive PTY WebSocket
+│   └── requirements.txt   # Python dependencies
+├── src/
+│   ├── components/        # React UI components
+│   ├── hooks/             # Custom hooks (useScanEngine, etc.)
+│   ├── types/             # TypeScript type definitions
+│   ├── config/            # Backend API/WS URL config
+│   └── pages/             # Route pages
+├── package.json
+└── vite.config.ts
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Configuration
 
-## How can I deploy this project?
+### Backend URL
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+Edit `src/config/backend.ts` to change the backend host/port if not using defaults.
 
-## Can I connect a custom domain to my Lovable project?
+### Settings
 
-Yes, you can!
+The settings page lets you configure:
+- Default wordlist path
+- Thread count
+- Discord/Slack webhook URLs for scan notifications
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+---
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `Failed to connect to backend` | Make sure the backend is running on port 8000 |
+| `CORS error` | Backend allows all origins by default — check `main.py` |
+| `gobuster exit code 1` | Target may return uniform responses; try a different wordlist |
+| Tools showing "Not installed — skipping" | Install the missing tool and ensure it's on your `$PATH` |
+
+---
+
+## Tech Stack
+
+- **Frontend:** React, Vite, TypeScript, Tailwind CSS, shadcn/ui
+- **Backend:** Python, FastAPI, WebSocket, asyncio
+- **Database:** SQLite (via aiosqlite)
+- **Reports:** WeasyPrint (PDF), Jinja2 (HTML)
