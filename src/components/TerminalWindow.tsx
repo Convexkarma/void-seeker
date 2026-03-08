@@ -12,6 +12,15 @@ interface TerminalWindowProps {
   isRunning: boolean;
 }
 
+const colorMap: Record<string, string> = {
+  "terminal-green": "text-terminal-green",
+  "terminal-amber": "text-terminal-amber",
+  "terminal-red": "text-terminal-red",
+  "terminal-blue": "text-terminal-blue",
+  "terminal-cyan": "text-terminal-cyan",
+  "terminal-purple": "text-terminal-purple",
+};
+
 export function TerminalWindow({ lines, isRunning }: TerminalWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -21,7 +30,6 @@ export function TerminalWindow({ lines, isRunning }: TerminalWindowProps) {
 
   return (
     <div className="bg-terminal-bg border border-border rounded-md overflow-hidden">
-      {/* Title bar */}
       <div className="flex items-center gap-2 px-3 py-1.5 bg-secondary/50 border-b border-border">
         <div className="flex gap-1.5">
           <div className="w-2.5 h-2.5 rounded-full bg-terminal-red" />
@@ -30,7 +38,6 @@ export function TerminalWindow({ lines, isRunning }: TerminalWindowProps) {
         </div>
         <span className="text-[10px] font-mono text-muted-foreground ml-2">autorecon — terminal</span>
       </div>
-      {/* Output */}
       <ScrollArea className="h-64 p-3">
         <div className="font-mono text-xs leading-5 scanline">
           {lines.length === 0 && !isRunning && (
@@ -39,7 +46,7 @@ export function TerminalWindow({ lines, isRunning }: TerminalWindowProps) {
             </div>
           )}
           {lines.map((line, i) => (
-            <div key={i} className={`text-${line.color}`}>
+            <div key={i} className={colorMap[line.color] || "text-terminal-green"}>
               {line.text}
             </div>
           ))}
