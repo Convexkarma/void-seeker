@@ -33,14 +33,14 @@ export function ResultsDashboard({ result }: ResultsDashboardProps) {
 
   const tabs = [
     { value: "overview", label: "Overview" },
-    { value: "subdomains", label: `Subs (${f.subdomains.length})` },
-    { value: "ports", label: `Ports (${f.ports.length})` },
-    { value: "vulns", label: `Vulns (${f.vulnerabilities.length})`, alert: critCount + highCount > 0 },
-    { value: "dirs", label: `Dirs (${f.directories.length})` },
-    { value: "tech", label: `Tech (${f.technologies.length})` },
-    { value: "screenshots", label: `Screenshots (${f.screenshots.length})` },
+    { value: "subdomains", label: `Subs (${subs.length})` },
+    { value: "ports", label: `Ports (${ports.length})` },
+    { value: "vulns", label: `Vulns (${vulns.length})`, alert: critCount + highCount > 0 },
+    { value: "dirs", label: `Dirs (${dirs.length})` },
+    { value: "tech", label: `Tech (${tech.length})` },
+    { value: "screenshots", label: `Screenshots (${screenshots.length})` },
     { value: "dns", label: "DNS" },
-    { value: "secrets", label: `Secrets (${f.secrets.length})` },
+    { value: "secrets", label: `Secrets (${secrets.length})` },
     { value: "logs", label: "Logs" },
   ];
 
