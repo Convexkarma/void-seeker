@@ -21,11 +21,13 @@ const colorMap: Record<string, string> = {
 };
 
 export function TerminalWindow({ lines, isRunning }: TerminalWindowProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll using scrollTop (much cheaper than scrollIntoView)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [lines]);
+    const el = containerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lines.length]);
 
   return (
     <div className="bg-terminal-bg border border-border rounded-md overflow-hidden">
