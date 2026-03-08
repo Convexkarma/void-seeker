@@ -32,15 +32,16 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-async def _connect() -> aiosqlite.Connection:
-    return await aiosqlite.connect(DB_PATH)
+def _connect() -> aiosqlite.Connection:
+    """Return an aiosqlite connection (use as `async with _connect() as db:`)."""
+    return aiosqlite.connect(DB_PATH)
 
 
 # ── Init ──────────────────────────────────────────────────────────────────────
 
 async def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    async with await _connect() as db:
+    async with _connect() as db:
         await db.executescript(SCHEMA_SQL)
         await db.commit()
     print(f"[*] Database ready: {DB_PATH}")
@@ -50,7 +51,7 @@ async def init_db() -> None:
 
 async def save_scan(scan_data: Dict[str, Any]) -> bool:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             await db.execute(
                 """INSERT OR REPLACE INTO scans
                    (id, domain, status, created_at, updated_at, data)
@@ -73,7 +74,7 @@ async def save_scan(scan_data: Dict[str, Any]) -> bool:
 
 async def update_scan(scan_id: str, updates: Dict[str, Any]) -> bool:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             cursor = await db.execute("SELECT data FROM scans WHERE id = ?", (scan_id,))
             row = await cursor.fetchone()
             if not row:
@@ -95,7 +96,7 @@ async def update_scan(scan_id: str, updates: Dict[str, Any]) -> bool:
 
 async def get_scan(scan_id: str) -> Optional[Dict[str, Any]]:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             cursor = await db.execute("SELECT data FROM scans WHERE id = ?", (scan_id,))
             row = await cursor.fetchone()
             return json.loads(row[0]) if row else None
@@ -106,7 +107,7 @@ async def get_scan(scan_id: str) -> Optional[Dict[str, Any]]:
 
 async def list_scans(limit: int = 100) -> List[Dict[str, Any]]:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             cursor = await db.execute(
                 "SELECT data FROM scans ORDER BY created_at DESC LIMIT ?", (limit,)
             )
@@ -119,7 +120,7 @@ async def list_scans(limit: int = 100) -> List[Dict[str, Any]]:
 
 async def delete_scan_db(scan_id: str) -> bool:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             await db.execute("DELETE FROM scans WHERE id = ?", (scan_id,))
             await db.commit()
         return True
@@ -130,7 +131,7 @@ async def delete_scan_db(scan_id: str) -> bool:
 
 async def get_scans_for_domain(domain: str) -> List[Dict[str, Any]]:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             cursor = await db.execute(
                 "SELECT data FROM scans WHERE domain = ? ORDER BY created_at DESC", (domain,)
             )
@@ -143,7 +144,7 @@ async def get_scans_for_domain(domain: str) -> List[Dict[str, Any]]:
 
 async def search_scans(query: str) -> List[Dict[str, Any]]:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             cursor = await db.execute(
                 "SELECT data FROM scans WHERE domain LIKE ? ORDER BY created_at DESC LIMIT 50",
                 (f"%{query}%",),
@@ -157,7 +158,7 @@ async def search_scans(query: str) -> List[Dict[str, Any]]:
 
 async def get_stats() -> Dict[str, Any]:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             total = (await (await db.execute("SELECT COUNT(*) FROM scans")).fetchone())[0]
             status_rows = await (await db.execute("SELECT status, COUNT(*) FROM scans GROUP BY status")).fetchall()
             unique = (await (await db.execute("SELECT COUNT(DISTINCT domain) FROM scans")).fetchone())[0]
