@@ -104,10 +104,17 @@ export function useScanEngine() {
 
         ws.onmessage = (event) => {
           try {
-            const line = JSON.parse(event.data);
-            setTerminalLines((prev) => [...prev, line]);
-            if (line.module) {
-              setActiveModule(line.module);
+            const msg = JSON.parse(event.data);
+            // Skip non-terminal messages (ping, scan_complete, etc.)
+            if (msg.type === "ping" || msg.type === "scan_complete") return;
+            if (!msg.text) return;
+            setTerminalLines((prev) => {
+              const next = [...prev, msg];
+              // Cap at 1000 lines to prevent memory/render issues
+              return next.length > 1000 ? next.slice(-800) : next;
+            });
+            if (msg.module) {
+              setActiveModule(msg.module);
             }
           } catch {
             // non-JSON message, ignore
@@ -125,8 +132,9 @@ export function useScanEngine() {
             if (res.ok) {
               const statusData = await res.json();
               setProgress(statusData.progress || 0);
-              if (statusData.active_module) {
-                setActiveModule(statusData.active_module);
+              const mod = statusData.active_module || statusData.current_module;
+              if (mod) {
+                setActiveModule(mod);
               }
 
               if (statusData.status === "completed" || statusData.status === "cancelled" || statusData.status === "failed") {

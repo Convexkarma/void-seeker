@@ -1,5 +1,4 @@
-import { useRef, useEffect } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useRef, useEffect, useCallback } from "react";
 
 interface TerminalLine {
   module: string;
@@ -22,11 +21,13 @@ const colorMap: Record<string, string> = {
 };
 
 export function TerminalWindow({ lines, isRunning }: TerminalWindowProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll using scrollTop (much cheaper than scrollIntoView)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [lines]);
+    const el = containerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lines.length]);
 
   return (
     <div className="bg-terminal-bg border border-border rounded-md overflow-hidden">
@@ -38,7 +39,7 @@ export function TerminalWindow({ lines, isRunning }: TerminalWindowProps) {
         </div>
         <span className="text-[10px] font-mono text-muted-foreground ml-2">autorecon — terminal</span>
       </div>
-      <ScrollArea className="h-64 p-3">
+      <div ref={containerRef} className="h-64 p-3 overflow-y-auto">
         <div className="font-mono text-xs leading-5 scanline">
           {lines.length === 0 && !isRunning && (
             <div className="text-muted-foreground">
@@ -55,9 +56,8 @@ export function TerminalWindow({ lines, isRunning }: TerminalWindowProps) {
               <span className="cursor-blink">█</span>
             </div>
           )}
-          <div ref={bottomRef} />
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
