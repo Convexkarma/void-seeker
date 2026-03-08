@@ -195,10 +195,16 @@ export function useScanEngine() {
       console.warn("WebSocket connection failed:", wsErr);
     }
 
-    // Poll status for progress updates
+    // Poll status for progress updates (with timeout + failure limit)
+    let pollFailures = 0;
     pollingRef.current = setInterval(async () => {
       try {
-        const res = await fetch(API.scanStatus(scanId));
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(API.scanStatus(scanId), { signal: controller.signal });
+        clearTimeout(timeout);
+        pollFailures = 0;
+
         if (res.ok) {
           const statusData = await res.json();
           setProgress(statusData.progress || 0);
@@ -214,7 +220,12 @@ export function useScanEngine() {
           }
         }
       } catch {
-        // polling error, will retry
+        pollFailures++;
+        if (pollFailures >= 5) {
+          setStatus("failed");
+          addLine({ module: "System", color: "terminal-red", text: "[Error] Lost connection to backend after multiple retries." });
+          cleanup();
+        }
       }
     }, 2000);
   }, [cleanup, fetchResults, addLine]);
