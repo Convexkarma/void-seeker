@@ -18,16 +18,16 @@ interface ResultsDashboardProps {
 }
 
 export function ResultsDashboard({ result }: ResultsDashboardProps) {
-  const f = (result.findings || {}) as ScanResult["findings"];
-  const vulns = f.vulnerabilities || [];
-  const subs = f.subdomains || [];
-  const ports = f.ports || [];
-  const dirs = f.directories || [];
-  const tech = f.technologies || [];
-  const screenshots = f.screenshots || [];
-  const secrets = f.secrets || [];
-  const logs = f.logs || [];
-  const dns = f.dns || { a: [], aaaa: [], mx: [], ns: [], txt: [], cname: [], whois: { registrar: "", createdDate: "", expiryDate: "", nameServers: [] }, spf: false, dmarc: false, dkim: false };
+  const f = (result?.findings ?? {}) as Partial<ScanResult["findings"]>;
+  const vulns = Array.isArray(f.vulnerabilities) ? f.vulnerabilities : [];
+  const subs = Array.isArray(f.subdomains) ? f.subdomains : [];
+  const ports = Array.isArray(f.ports) ? f.ports : [];
+  const dirs = Array.isArray(f.directories) ? f.directories : [];
+  const tech = Array.isArray(f.technologies) ? f.technologies : [];
+  const screenshots = Array.isArray(f.screenshots) ? f.screenshots : [];
+  const secrets = Array.isArray(f.secrets) ? f.secrets : [];
+  const logs = Array.isArray(f.logs) ? f.logs : [];
+  const dns = f.dns ?? { a: [], aaaa: [], mx: [], ns: [], txt: [], cname: [], whois: { registrar: "", createdDate: "", expiryDate: "", nameServers: [] }, spf: false, dmarc: false, dkim: false };
   const critCount = vulns.filter(v => v.severity === "critical").length;
   const highCount = vulns.filter(v => v.severity === "high").length;
 
