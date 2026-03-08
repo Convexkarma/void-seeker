@@ -1,8 +1,7 @@
 """
 AutoRecon - scanner.py
-Scan Orchestrator — runs real system tools, streams output live via WebSocket queues.
-Each tool runs as a real OS subprocess. Output is streamed line-by-line to all
-connected WebSocket subscribers in real time.
+Scan orchestrator — runs real system tools as OS subprocesses,
+streams output live via WebSocket queues.
 """
 
 import asyncio
@@ -10,113 +9,69 @@ import json
 import os
 import shutil
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, List
+from typing import Any, Dict, List, Optional
 
 from db import update_scan
 from parser import parse_output
 
 # ── Global registry of active scans ──────────────────────────────────────────
-active_scans: dict = {}
+active_scans: Dict[str, "ScanOrchestrator"] = {}
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
 AUTORECON_DIR = Path.home() / ".autorecon"
 SCANS_DIR = AUTORECON_DIR / "scans"
 
 # ── Tool command templates ────────────────────────────────────────────────────
-# {domain}   → target domain
-# {out}      → scan output directory
-# {wordlist} → wordlist path
-# {threads}  → thread count
+# Placeholders: {domain}, {out}, {wordlist}, {threads}
 
-COMMANDS = {
-    "subfinder": (
-        "subfinder -d {domain} -silent -all -t {threads} -o {out}/subdomains_sf.txt"
-    ),
-    "amass": (
-        "amass enum -passive -d {domain} -o {out}/subdomains_am.txt -timeout 10"
-    ),
-    "httpx": (
-        "httpx -l {out}/subdomains_all.txt -silent -status-code -title "
-        "-tech-detect -content-length -threads {threads} -o {out}/live_hosts.txt"
-    ),
-    "nmap": (
-        "nmap -sV -sC -T4 --open --min-parallelism {threads} "
-        "-p 21,22,23,25,53,80,110,143,443,445,465,587,993,995,"
-        "1433,1521,2375,2376,3000,3306,3389,4848,5432,5900,5985,"
-        "6379,8080,8443,8888,9200,9300,11211,27017,50070 "
-        "{domain} -oX {out}/nmap.xml -oN {out}/nmap.txt"
-    ),
-    "gobuster": (
-        "gobuster dir -u http://{domain} -w {wordlist} -t {threads} "
-        "-o {out}/dirs.txt -b 404,403,400 --no-error -q"
-    ),
-    "nuclei": (
-        "nuclei -u http://{domain} -severity low,medium,high,critical "
-        "-c {threads} -o {out}/nuclei.txt -silent -no-color"
-    ),
-    "whatweb": (
-        "whatweb -a 3 http://{domain} --log-json={out}/whatweb.json --quiet"
-    ),
-    "gowitness": (
-        "gowitness file -f {out}/subdomains_all.txt -P {out}/screenshots/ "
-        "--threads {threads} --quiet"
-    ),
-    "wafw00f": (
-        "wafw00f http://{domain} -o {out}/waf.txt -a"
-    ),
-    "dnsx": (
-        "dnsx -d {domain} -a -aaaa -mx -ns -txt -cname -ptr -soa "
-        "-t {threads} -o {out}/dns.txt -silent"
-    ),
-    "theHarvester": (
-        "theHarvester -d {domain} -b all -f {out}/harvester"
-    ),
-    "testssl": (
-        "testssl.sh --jsonfile {out}/ssl.json --quiet https://{domain}"
-    ),
-    "whois": (
-        "whois {domain}"
-    ),
-    "dig": (
-        "dig any {domain} +noall +answer +multiline"
-    ),
-    "curl_headers": (
-        "curl -sI --max-time 15 --user-agent 'Mozilla/5.0' "
-        "http://{domain}"
-    ),
+COMMANDS: Dict[str, str] = {
+    "subfinder":    "subfinder -d {domain} -silent -all -t {threads} -o {out}/subdomains_sf.txt",
+    "amass":        "amass enum -passive -d {domain} -o {out}/subdomains_am.txt -timeout 10",
+    "httpx":        "httpx -l {out}/subdomains_all.txt -silent -status-code -title -tech-detect -content-length -threads {threads} -o {out}/live_hosts.txt",
+    "nmap":         "nmap -sV -sC -T4 --open --min-parallelism {threads} -p 21,22,23,25,53,80,110,143,443,445,465,587,993,995,1433,1521,2375,2376,3000,3306,3389,4848,5432,5900,5985,6379,8080,8443,8888,9200,9300,11211,27017,50070 {domain} -oX {out}/nmap.xml -oN {out}/nmap.txt",
+    "gobuster":     "gobuster dir -u http://{domain} -w {wordlist} -t {threads} -o {out}/dirs.txt -b 404,403,400 --no-error -q",
+    "nuclei":       "nuclei -u http://{domain} -severity low,medium,high,critical -c {threads} -o {out}/nuclei.txt -silent -no-color",
+    "whatweb":      "whatweb -a 3 http://{domain} --log-json={out}/whatweb.json --quiet",
+    "gowitness":    "gowitness file -f {out}/subdomains_all.txt -P {out}/screenshots/ --threads {threads} --quiet",
+    "wafw00f":      "wafw00f http://{domain} -o {out}/waf.txt -a",
+    "dnsx":         "dnsx -d {domain} -a -aaaa -mx -ns -txt -cname -ptr -soa -t {threads} -o {out}/dns.txt -silent",
+    "theHarvester": "theHarvester -d {domain} -b all -f {out}/harvester",
+    "testssl":      "testssl.sh --jsonfile {out}/ssl.json --quiet https://{domain}",
+    "whois":        "whois {domain}",
+    "dig":          "dig any {domain} +noall +answer +multiline",
+    "curl_headers": "curl -sI --max-time 15 --user-agent 'Mozilla/5.0' http://{domain}",
 }
 
-# Execution order — matters! Discovery must happen before live-host checks
+# Execution order — discovery first, then enrichment, then active scanning
 MODULE_ORDER = [
-    "subfinder",      # Passive subdomain enum
-    "amass",          # Deep subdomain enum (runs after subfinder so we can merge)
-    "dnsx",           # DNS records
-    "dig",            # Any DNS records
-    "whois",          # WHOIS data
-    "httpx",          # Live host detection (needs subdomain list)
-    "nmap",           # Port scan
-    "whatweb",        # Tech fingerprinting
-    "wafw00f",        # WAF detection
-    "curl_headers",   # HTTP headers
-    "gobuster",       # Dir brute force
-    "nuclei",         # Vuln scanning
-    "theHarvester",   # OSINT emails/intel
-    "gowitness",      # Screenshots
-    "testssl",        # TLS analysis
+    "subfinder", "amass", "dnsx", "dig", "whois", "httpx", "nmap",
+    "whatweb", "wafw00f", "curl_headers", "gobuster", "nuclei",
+    "theHarvester", "gowitness", "testssl",
 ]
 
-# High-risk ports to flag in results
-HIGH_RISK_PORTS = {21, 22, 23, 25, 53, 445, 3389, 5900, 6379, 27017, 1433, 5432, 3306, 2375, 2376, 4848, 9200}
+INSTALL_HINTS: Dict[str, str] = {
+    "subfinder":    "go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest",
+    "amass":        "go install github.com/projectdiscovery/amass/v4/...@latest",
+    "httpx":        "go install github.com/projectdiscovery/httpx/cmd/httpx@latest",
+    "nuclei":       "go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest",
+    "dnsx":         "go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest",
+    "gowitness":    "go install github.com/sensepost/gowitness@latest",
+    "nmap":         "sudo apt install nmap",
+    "gobuster":     "sudo apt install gobuster",
+    "whatweb":      "sudo apt install whatweb",
+    "wafw00f":      "pip3 install wafw00f",
+    "theHarvester": "pip3 install theHarvester",
+    "testssl.sh":   "sudo apt install testssl.sh",
+}
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 class ScanOrchestrator:
-    """
-    Orchestrates a full recon scan against a target domain.
-    Each module runs as a real OS subprocess. Output is streamed line-by-line
-    to all connected WebSocket subscriber queues in real time.
-    """
+    """Orchestrates a full recon scan — one module at a time, streaming output."""
 
     def __init__(
         self,
@@ -137,32 +92,30 @@ class ScanOrchestrator:
         self.stealth = stealth
         self.proxy = proxy
         self.rate_limit = rate_limit
-
         self.cancelled = False
+
         self._subscribers: List[asyncio.Queue] = []
         self._current_proc: Optional[asyncio.subprocess.Process] = None
-
-        # Output directory for this scan
         self.out_dir = SCANS_DIR / scan_id
         self.out_dir.mkdir(parents=True, exist_ok=True)
         (self.out_dir / "screenshots").mkdir(exist_ok=True)
-
-        self.results: dict = {}
+        self.results: Dict[str, Any] = {}
         self.start_time = time.time()
         self._subdomain_files: List[Path] = []
 
-    # ── Subscriber management ─────────────────────────────────────────────────
+    # ── Pub/Sub ───────────────────────────────────────────────────────────────
 
-    def add_subscriber(self, q: asyncio.Queue):
+    def add_subscriber(self, q: asyncio.Queue) -> None:
         self._subscribers.append(q)
 
-    def remove_subscriber(self, q: asyncio.Queue):
-        if q in self._subscribers:
+    def remove_subscriber(self, q: asyncio.Queue) -> None:
+        try:
             self._subscribers.remove(q)
+        except ValueError:
+            pass
 
-    async def broadcast(self, msg: dict):
-        """Send a message to all connected WebSocket subscribers."""
-        dead = []
+    async def broadcast(self, msg: dict) -> None:
+        dead: List[asyncio.Queue] = []
         for q in self._subscribers:
             try:
                 await q.put(msg)
@@ -173,205 +126,149 @@ class ScanOrchestrator:
 
     # ── Cancel ────────────────────────────────────────────────────────────────
 
-    async def cancel(self):
-        """Cancel the running scan and kill the active subprocess."""
+    async def cancel(self) -> None:
         self.cancelled = True
-        if self._current_proc and self._current_proc.returncode is None:
+        proc = self._current_proc
+        if proc and proc.returncode is None:
             try:
-                self._current_proc.terminate()
+                proc.terminate()
                 await asyncio.sleep(1)
-                if self._current_proc.returncode is None:
-                    self._current_proc.kill()
+                if proc.returncode is None:
+                    proc.kill()
             except ProcessLookupError:
                 pass
         await self.broadcast({"type": "cancelled", "scan_id": self.scan_id})
 
-    # ── Main run loop ─────────────────────────────────────────────────────────
+    # ── Main loop ─────────────────────────────────────────────────────────────
 
-    async def run(self):
-        """Main scan loop — runs each module in order."""
-        # Only run modules that were requested AND appear in our order list
-        ordered_modules = [m for m in MODULE_ORDER if m in self.modules]
-        total = len(ordered_modules)
+    async def run(self) -> None:
+        ordered = [m for m in MODULE_ORDER if m in self.modules]
+        total = len(ordered)
 
         await self.broadcast({
-            "type": "started",
-            "scan_id": self.scan_id,
-            "domain": self.domain,
-            "modules": ordered_modules,
-            "total_modules": total,
-            "timestamp": datetime.utcnow().isoformat(),
+            "type": "started", "scan_id": self.scan_id,
+            "domain": self.domain, "modules": ordered,
+            "total_modules": total, "timestamp": _now(),
         })
 
-        for idx, module in enumerate(ordered_modules):
+        for idx, module in enumerate(ordered):
             if self.cancelled:
                 break
 
-            progress = int((idx / total) * 100)
+            progress = int((idx / max(total, 1)) * 100)
             await update_scan(self.scan_id, {
-                "status": "running",
-                "progress": progress,
-                "current_module": module,
-                "updated_at": datetime.utcnow().isoformat(),
+                "status": "running", "progress": progress,
+                "current_module": module, "updated_at": _now(),
             })
             await self.broadcast({
-                "type": "module_start",
-                "module": module,
-                "index": idx + 1,
-                "total": total,
-                "progress": progress,
+                "type": "module_start", "module": module,
+                "index": idx + 1, "total": total, "progress": progress,
             })
 
-            # Stealth mode: slow down
             if self.stealth and idx > 0:
                 await asyncio.sleep(3)
 
             await self._run_module(module)
 
-        # ── Finalise ──────────────────────────────────────────────────────────
+        # Finalise
         status = "cancelled" if self.cancelled else "completed"
         duration = int(time.time() - self.start_time)
 
         await update_scan(self.scan_id, {
-            "status": status,
-            "progress": 100,
-            "current_module": "",
-            "results": self.results,
-            "duration": duration,
-            "completed_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "status": status, "progress": 100, "current_module": "",
+            "results": self.results, "duration": duration,
+            "completed_at": _now(), "updated_at": _now(),
         })
-
         await self.broadcast({
-            "type": "scan_complete",
-            "scan_id": self.scan_id,
-            "status": status,
-            "duration": duration,
+            "type": "scan_complete", "scan_id": self.scan_id,
+            "status": status, "duration": duration,
             "summary": self._build_summary(),
         })
-
-        # Notify webhooks
         await self._notify_webhooks(status)
 
-        # Signal all subscribers to close
+        # Signal subscribers to close
         for q in self._subscribers:
-            await q.put(None)
+            try:
+                await q.put(None)
+            except Exception:
+                pass
 
-        # Remove from active scans
         active_scans.pop(self.scan_id, None)
 
-    # ── Run a single module ───────────────────────────────────────────────────
+    # ── Single module ─────────────────────────────────────────────────────────
 
-    async def _run_module(self, module: str):
-        """Execute a single scan module."""
-
-        # Special pre-processing: merge subdomain files before httpx
+    async def _run_module(self, module: str) -> None:
+        # Pre-step: merge subdomains before httpx
         if module == "httpx":
             await self._merge_subdomains()
 
-        # Build the command string
         cmd = self._build_command(module)
         if not cmd:
+            await self.broadcast({"type": "module_skip", "module": module, "reason": "No command template"})
+            return
+
+        tool_bin = cmd.split()[0]
+        if not shutil.which(tool_bin):
             await self.broadcast({
-                "type": "module_skip",
-                "module": module,
-                "reason": "No command template found",
+                "type": "module_skip", "module": module,
+                "reason": f"Tool not installed: {tool_bin}",
+                "install_hint": INSTALL_HINTS.get(tool_bin, f"See docs for {tool_bin}"),
             })
             return
 
-        # Check if the tool binary exists
-        tool_binary = cmd.split()[0]
-        if not shutil.which(tool_binary):
-            await self.broadcast({
-                "type": "module_skip",
-                "module": module,
-                "reason": f"Tool not installed: {tool_binary}",
-                "install_hint": self._install_hint(tool_binary),
-            })
-            return
-
-        # Broadcast the exact command being run
-        await self.broadcast({
-            "type": "command",
-            "module": module,
-            "command": cmd,
-        })
+        await self.broadcast({"type": "command", "module": module, "command": cmd})
 
         output_lines: List[str] = []
-
         try:
-            env = self._build_env()
-
             proc = await asyncio.create_subprocess_shell(
                 cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
-                env=env,
+                env=self._build_env(),
                 cwd=str(self.out_dir),
             )
             self._current_proc = proc
 
-            # Stream stdout line by line
             async for raw_line in proc.stdout:
                 if self.cancelled:
                     proc.terminate()
                     break
-
                 line = raw_line.decode("utf-8", errors="replace").rstrip()
                 if not line:
                     continue
-
                 output_lines.append(line)
-                await self.broadcast({
-                    "type": "output",
-                    "module": module,
-                    "line": line,
-                })
-
-                # Stealth mode: micro-delay per line
+                await self.broadcast({"type": "output", "module": module, "line": line})
                 if self.stealth:
                     await asyncio.sleep(0.05)
 
             await proc.wait()
             self._current_proc = None
 
-            # Track subdomain output files for merging
+            # Track subdomain files
             if module == "subfinder":
                 f = self.out_dir / "subdomains_sf.txt"
                 if f.exists() and f.stat().st_size > 0:
                     self._subdomain_files.append(f)
-
             elif module == "amass":
                 f = self.out_dir / "subdomains_am.txt"
                 if f.exists() and f.stat().st_size > 0:
                     self._subdomain_files.append(f)
 
-            # Parse tool output into structured data
+            # Parse
             parsed = await parse_output(module, output_lines, self.out_dir)
             self.results[module] = parsed
 
-            # Persist to DB after every module completes
-            await update_scan(self.scan_id, {
-                "results": self.results,
-                "updated_at": datetime.utcnow().isoformat(),
-            })
-
+            await update_scan(self.scan_id, {"results": self.results, "updated_at": _now()})
             await self.broadcast({
-                "type": "module_complete",
-                "module": module,
-                "parsed": parsed,
-                "exit_code": proc.returncode,
+                "type": "module_complete", "module": module,
+                "parsed": parsed, "exit_code": proc.returncode,
                 "lines": len(output_lines),
             })
 
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            await self.broadcast({
-                "type": "module_error",
-                "module": module,
-                "error": str(e),
-            })
+        except Exception as exc:
+            await self.broadcast({"type": "module_error", "module": module, "error": str(exc)})
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -379,97 +276,65 @@ class ScanOrchestrator:
         template = COMMANDS.get(module)
         if not template:
             return None
-
         cmd = template.format(
-            domain=self.domain,
-            out=str(self.out_dir),
-            wordlist=self.wordlist,
-            threads=self.threads,
+            domain=self.domain, out=str(self.out_dir),
+            wordlist=self.wordlist, threads=self.threads,
         )
-
-        # Apply proxy if set
         if self.proxy and module in ("gobuster", "nuclei", "httpx", "whatweb", "curl_headers"):
-            if module == "gobuster":
-                cmd += f" --proxy {self.proxy}"
-            elif module == "httpx":
-                cmd += f" -proxy {self.proxy}"
-            elif module == "curl_headers":
-                cmd += f" --proxy {self.proxy}"
-
-        # Apply rate limiting
+            proxy_flags = {"gobuster": f" --proxy {self.proxy}", "httpx": f" -proxy {self.proxy}", "curl_headers": f" --proxy {self.proxy}"}
+            cmd += proxy_flags.get(module, "")
         if self.rate_limit:
-            if module == "gobuster":
-                cmd += f" --delay {int(1000 / self.rate_limit)}ms"
-            elif module == "nuclei":
-                cmd += f" -rate-limit {self.rate_limit}"
-            elif module == "httpx":
-                cmd += f" -rate-limit {self.rate_limit}"
-
+            rate_flags = {"gobuster": f" --delay {int(1000 / self.rate_limit)}ms", "nuclei": f" -rate-limit {self.rate_limit}", "httpx": f" -rate-limit {self.rate_limit}"}
+            cmd += rate_flags.get(module, "")
         return cmd
 
     def _build_env(self) -> dict:
         env = os.environ.copy()
-        # Ensure Go binaries are on PATH
-        go_bin = Path.home() / "go" / "bin"
-        if str(go_bin) not in env.get("PATH", ""):
+        go_bin = str(Path.home() / "go" / "bin")
+        if go_bin not in env.get("PATH", ""):
             env["PATH"] = f"{go_bin}:{env.get('PATH', '')}"
-        # Apply proxy
         if self.proxy:
-            env["http_proxy"] = self.proxy
-            env["https_proxy"] = self.proxy
-            env["HTTP_PROXY"] = self.proxy
-            env["HTTPS_PROXY"] = self.proxy
-        # Inject API keys from config
+            for k in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+                env[k] = self.proxy
         config = self._load_config()
-        if config.get("shodan_key"):
-            env["SHODAN_API_KEY"] = config["shodan_key"]
-        if config.get("github_token"):
-            env["GITHUB_TOKEN"] = config["github_token"]
+        for env_key, cfg_key in [("SHODAN_API_KEY", "shodan_key"), ("GITHUB_TOKEN", "github_token")]:
+            if config.get(cfg_key):
+                env[env_key] = config[cfg_key]
         return env
 
     def _load_config(self) -> dict:
-        config_file = AUTORECON_DIR / "config.json"
-        if config_file.exists():
+        cfg = AUTORECON_DIR / "config.json"
+        if cfg.exists():
             try:
-                return json.loads(config_file.read_text())
+                return json.loads(cfg.read_text())
             except Exception:
                 pass
         return {}
 
-    async def _merge_subdomains(self):
-        """Merge all discovered subdomain files into a single deduplicated list."""
-        all_subs_file = self.out_dir / "subdomains_all.txt"
+    async def _merge_subdomains(self) -> None:
         seen: set = set()
-
         for sf in self._subdomain_files:
             if sf.exists():
                 for line in sf.read_text().splitlines():
                     line = line.strip()
                     if line and not line.startswith("["):
                         seen.add(line)
-
-        # Also add the main domain itself
         seen.add(self.domain)
-
         if seen:
-            all_subs_file.write_text("\n".join(sorted(seen)) + "\n")
+            (self.out_dir / "subdomains_all.txt").write_text("\n".join(sorted(seen)) + "\n")
             await self.broadcast({
-                "type": "info",
-                "module": "httpx",
+                "type": "info", "module": "httpx",
                 "message": f"Merged {len(seen)} unique subdomains for live-host detection",
             })
 
     def _build_summary(self) -> dict:
-        """Build a quick summary dict of key findings."""
         subs: set = set()
         for m in ("subfinder", "amass"):
             for s in self.results.get(m, {}).get("subdomains", []):
                 subs.add(s)
-
         ports = self.results.get("nmap", {}).get("ports", [])
         vulns = self.results.get("nuclei", {}).get("findings", [])
         dirs = self.results.get("gobuster", {}).get("directories", [])
-
         return {
             "subdomains": len(subs),
             "live_hosts": self.results.get("httpx", {}).get("count", 0),
@@ -488,10 +353,11 @@ class ScanOrchestrator:
             "duration_seconds": int(time.time() - self.start_time),
         }
 
-    async def _notify_webhooks(self, status: str):
-        """Fire Discord/Slack webhooks when scan completes."""
+    async def _notify_webhooks(self, status: str) -> None:
         config = self._load_config()
-        if not config.get("discord_webhook") and not config.get("slack_webhook"):
+        discord = config.get("discord_webhook")
+        slack = config.get("slack_webhook")
+        if not discord and not slack:
             return
 
         summary = self._build_summary()
@@ -508,35 +374,9 @@ class ScanOrchestrator:
         try:
             import aiohttp
             async with aiohttp.ClientSession() as session:
-                if config.get("discord_webhook"):
-                    await session.post(
-                        config["discord_webhook"],
-                        json={"content": msg},
-                        timeout=aiohttp.ClientTimeout(total=5),
-                    )
-                if config.get("slack_webhook"):
-                    await session.post(
-                        config["slack_webhook"],
-                        json={"text": msg},
-                        timeout=aiohttp.ClientTimeout(total=5),
-                    )
-        except Exception as e:
-            print(f"[!] Webhook notification failed: {e}")
-
-    @staticmethod
-    def _install_hint(tool: str) -> str:
-        hints = {
-            "subfinder": "go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest",
-            "amass": "go install github.com/projectdiscovery/amass/v4/...@latest",
-            "httpx": "go install github.com/projectdiscovery/httpx/cmd/httpx@latest",
-            "nuclei": "go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest",
-            "dnsx": "go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest",
-            "gowitness": "go install github.com/sensepost/gowitness@latest",
-            "nmap": "sudo apt install nmap",
-            "gobuster": "sudo apt install gobuster",
-            "whatweb": "sudo apt install whatweb",
-            "wafw00f": "pip3 install wafw00f",
-            "theHarvester": "pip3 install theHarvester",
-            "testssl.sh": "sudo apt install testssl.sh",
-        }
-        return hints.get(tool, f"See tool documentation for {tool}")
+                if discord:
+                    await session.post(discord, json={"content": msg}, timeout=aiohttp.ClientTimeout(total=5))
+                if slack:
+                    await session.post(slack, json={"text": msg}, timeout=aiohttp.ClientTimeout(total=5))
+        except Exception as exc:
+            print(f"[!] Webhook notification failed: {exc}")
