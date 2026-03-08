@@ -131,7 +131,7 @@ async def delete_scan_db(scan_id: str) -> bool:
 
 async def get_scans_for_domain(domain: str) -> List[Dict[str, Any]]:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             cursor = await db.execute(
                 "SELECT data FROM scans WHERE domain = ? ORDER BY created_at DESC", (domain,)
             )
