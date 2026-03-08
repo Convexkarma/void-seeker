@@ -82,15 +82,15 @@ export function ResultsDashboard({ result }: ResultsDashboardProps) {
 
         <div className="p-3 sm:p-4 overflow-x-auto">
           <TabsContent value="overview"><OverviewTab result={result} /></TabsContent>
-          <TabsContent value="subdomains"><SubdomainsTab subdomains={f.subdomains} /></TabsContent>
-          <TabsContent value="ports"><PortsTab ports={f.ports} /></TabsContent>
-          <TabsContent value="vulns"><VulnsTab vulnerabilities={f.vulnerabilities} /></TabsContent>
-          <TabsContent value="dirs"><DirectoriesTab directories={f.directories} /></TabsContent>
-          <TabsContent value="tech"><TechTab technologies={f.technologies} /></TabsContent>
-          <TabsContent value="screenshots"><ScreenshotsTab screenshots={f.screenshots} /></TabsContent>
-          <TabsContent value="dns"><DnsTab dns={f.dns} /></TabsContent>
-          <TabsContent value="secrets"><SecretsTab secrets={f.secrets} /></TabsContent>
-          <TabsContent value="logs"><LogsTab logs={f.logs} /></TabsContent>
+          <TabsContent value="subdomains"><SubdomainsTab subdomains={subs} /></TabsContent>
+          <TabsContent value="ports"><PortsTab ports={ports} /></TabsContent>
+          <TabsContent value="vulns"><VulnsTab vulnerabilities={vulns} /></TabsContent>
+          <TabsContent value="dirs"><DirectoriesTab directories={dirs} /></TabsContent>
+          <TabsContent value="tech"><TechTab technologies={tech} /></TabsContent>
+          <TabsContent value="screenshots"><ScreenshotsTab screenshots={screenshots} /></TabsContent>
+          <TabsContent value="dns"><DnsTab dns={dns} /></TabsContent>
+          <TabsContent value="secrets"><SecretsTab secrets={secrets} /></TabsContent>
+          <TabsContent value="logs"><LogsTab logs={logs} /></TabsContent>
         </div>
       </Tabs>
     </div>
