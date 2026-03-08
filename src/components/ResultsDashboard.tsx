@@ -6,9 +6,11 @@ import { PortsTab } from "./tabs/PortsTab";
 import { VulnsTab } from "./tabs/VulnsTab";
 import { DirectoriesTab } from "./tabs/DirectoriesTab";
 import { TechTab } from "./tabs/TechTab";
+import { ScreenshotsTab } from "./tabs/ScreenshotsTab";
 import { DnsTab } from "./tabs/DnsTab";
 import { SecretsTab } from "./tabs/SecretsTab";
 import { LogsTab } from "./tabs/LogsTab";
+import { ReportGenerator } from "./ReportGenerator";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 interface ResultsDashboardProps {
@@ -27,6 +29,7 @@ export function ResultsDashboard({ result }: ResultsDashboardProps) {
     { value: "vulns", label: `Vulns (${f.vulnerabilities.length})`, alert: critCount + highCount > 0 },
     { value: "dirs", label: `Dirs (${f.directories.length})` },
     { value: "tech", label: `Tech (${f.technologies.length})` },
+    { value: "screenshots", label: `Screenshots (${f.screenshots.length})` },
     { value: "dns", label: "DNS" },
     { value: "secrets", label: `Secrets (${f.secrets.length})` },
     { value: "logs", label: "Logs" },
@@ -41,9 +44,12 @@ export function ResultsDashboard({ result }: ResultsDashboardProps) {
             Results — {result.domain}
           </h2>
         </div>
-        <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap">
-          {result.completedAt ? new Date(result.completedAt).toLocaleTimeString() : ""}
-        </span>
+        <div className="flex items-center gap-2">
+          <ReportGenerator result={result} />
+          <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap">
+            {result.completedAt ? new Date(result.completedAt).toLocaleTimeString() : ""}
+          </span>
+        </div>
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
@@ -72,6 +78,7 @@ export function ResultsDashboard({ result }: ResultsDashboardProps) {
           <TabsContent value="vulns"><VulnsTab vulnerabilities={f.vulnerabilities} /></TabsContent>
           <TabsContent value="dirs"><DirectoriesTab directories={f.directories} /></TabsContent>
           <TabsContent value="tech"><TechTab technologies={f.technologies} /></TabsContent>
+          <TabsContent value="screenshots"><ScreenshotsTab screenshots={f.screenshots} /></TabsContent>
           <TabsContent value="dns"><DnsTab dns={f.dns} /></TabsContent>
           <TabsContent value="secrets"><SecretsTab secrets={f.secrets} /></TabsContent>
           <TabsContent value="logs"><LogsTab logs={f.logs} /></TabsContent>
