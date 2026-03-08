@@ -32,15 +32,16 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-async def _connect() -> aiosqlite.Connection:
-    return await aiosqlite.connect(DB_PATH)
+def _connect() -> aiosqlite.Connection:
+    """Return an aiosqlite connection (use as `async with _connect() as db:`)."""
+    return aiosqlite.connect(DB_PATH)
 
 
 # ── Init ──────────────────────────────────────────────────────────────────────
 
 async def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    async with await _connect() as db:
+    async with _connect() as db:
         await db.executescript(SCHEMA_SQL)
         await db.commit()
     print(f"[*] Database ready: {DB_PATH}")
