@@ -1,4 +1,4 @@
-import { Shield, History, Settings, Activity, Menu } from "lucide-react";
+import { Shield, History, Settings, Activity, Menu, Terminal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface TopNavProps {
@@ -6,10 +6,11 @@ interface TopNavProps {
   onHistoryClick: () => void;
   onSettingsClick: () => void;
   onModulesClick?: () => void;
+  onTerminalToggle?: () => void;
   showModulesButton?: boolean;
 }
 
-export function TopNav({ activeScans, onHistoryClick, onSettingsClick, onModulesClick, showModulesButton }: TopNavProps) {
+export function TopNav({ activeScans, onHistoryClick, onSettingsClick, onModulesClick, onTerminalToggle, showModulesButton }: TopNavProps) {
   return (
     <header className="h-14 border-b border-border bg-card flex items-center justify-between px-3 sm:px-4">
       <div className="flex items-center gap-2 sm:gap-3">
@@ -26,9 +27,12 @@ export function TopNav({ activeScans, onHistoryClick, onSettingsClick, onModules
           AutoRecon
         </span>
         <span className="text-xs font-mono text-muted-foreground hidden sm:inline">v2.0</span>
+        <Badge variant="outline" className="text-[9px] font-mono px-1.5 py-0 border-primary/20 text-primary/60 hidden sm:inline-flex">
+          LOCAL
+        </Badge>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex items-center gap-1 sm:gap-2">
         {activeScans > 0 && (
           <Badge className="bg-primary/20 text-primary border border-primary/30 font-mono text-xs flex items-center gap-1.5 px-2 py-0.5">
             <Activity className="h-3 w-3 animate-pulse" />
@@ -37,14 +41,23 @@ export function TopNav({ activeScans, onHistoryClick, onSettingsClick, onModules
           </Badge>
         )}
         <button
+          onClick={onTerminalToggle}
+          className="p-2 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+          title="Toggle Terminal (T)"
+        >
+          <Terminal className="h-4 w-4" />
+        </button>
+        <button
           onClick={onHistoryClick}
           className="p-2 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+          title="History (H)"
         >
           <History className="h-4 w-4" />
         </button>
         <button
           onClick={onSettingsClick}
           className="p-2 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+          title="Settings"
         >
           <Settings className="h-4 w-4" />
         </button>
