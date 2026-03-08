@@ -74,7 +74,7 @@ async def save_scan(scan_data: Dict[str, Any]) -> bool:
 
 async def update_scan(scan_id: str, updates: Dict[str, Any]) -> bool:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             cursor = await db.execute("SELECT data FROM scans WHERE id = ?", (scan_id,))
             row = await cursor.fetchone()
             if not row:
