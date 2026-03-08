@@ -115,6 +115,9 @@ export function useScanEngine() {
     let scanId: string;
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+
       const res = await fetch(API.startScan, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -124,7 +127,9 @@ export function useScanEngine() {
           wordlist: config.wordlist,
           threads: config.threads,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
 
       if (!res.ok) {
         const errText = await res.text().catch(() => "Unknown error");
@@ -138,10 +143,13 @@ export function useScanEngine() {
     } catch (err: any) {
       console.error("Failed to start scan:", err);
       setStatus("failed");
+      const msg = err.name === "AbortError"
+        ? "Connection timed out. Is the backend running?"
+        : `Failed to connect to backend: ${err.message}. Is the backend running?`;
       addLine({
         module: "System",
         color: "terminal-red",
-        text: `[Error] Failed to connect to backend: ${err.message}. Is the backend running?`,
+        text: `[Error] ${msg}`,
       });
       return;
     }
@@ -150,6 +158,16 @@ export function useScanEngine() {
     try {
       const ws = new WebSocket(WS.scan(scanId));
       wsRef.current = ws;
+
+      // Close WS if it doesn't connect within 5s
+      const wsTimeout = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          try { ws.close(); } catch {}
+          wsRef.current = null;
+        }
+      }, 5000);
+
+      ws.onopen = () => clearTimeout(wsTimeout);
 
       ws.onmessage = (event) => {
         try {
@@ -165,20 +183,28 @@ export function useScanEngine() {
       };
 
       ws.onerror = () => {
+        clearTimeout(wsTimeout);
         console.warn("WebSocket error — falling back to polling only");
       };
 
       ws.onclose = () => {
+        clearTimeout(wsTimeout);
         wsRef.current = null;
       };
     } catch (wsErr) {
       console.warn("WebSocket connection failed:", wsErr);
     }
 
-    // Poll status for progress updates
+    // Poll status for progress updates (with timeout + failure limit)
+    let pollFailures = 0;
     pollingRef.current = setInterval(async () => {
       try {
-        const res = await fetch(API.scanStatus(scanId));
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(API.scanStatus(scanId), { signal: controller.signal });
+        clearTimeout(timeout);
+        pollFailures = 0;
+
         if (res.ok) {
           const statusData = await res.json();
           setProgress(statusData.progress || 0);
@@ -194,7 +220,12 @@ export function useScanEngine() {
           }
         }
       } catch {
-        // polling error, will retry
+        pollFailures++;
+        if (pollFailures >= 5) {
+          setStatus("failed");
+          addLine({ module: "System", color: "terminal-red", text: "[Error] Lost connection to backend after multiple retries." });
+          cleanup();
+        }
       }
     }, 2000);
   }, [cleanup, fetchResults, addLine]);
