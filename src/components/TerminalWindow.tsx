@@ -39,7 +39,7 @@ export function TerminalWindow({ lines, isRunning }: TerminalWindowProps) {
         </div>
         <span className="text-[10px] font-mono text-muted-foreground ml-2">autorecon — terminal</span>
       </div>
-      <ScrollArea className="h-64 p-3">
+      <div ref={containerRef} className="h-64 p-3 overflow-y-auto">
         <div className="font-mono text-xs leading-5 scanline">
           {lines.length === 0 && !isRunning && (
             <div className="text-muted-foreground">
@@ -56,9 +56,8 @@ export function TerminalWindow({ lines, isRunning }: TerminalWindowProps) {
               <span className="cursor-blink">█</span>
             </div>
           )}
-          <div ref={bottomRef} />
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
