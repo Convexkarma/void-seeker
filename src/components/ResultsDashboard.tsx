@@ -13,6 +13,7 @@ import { LogsTab } from "./tabs/LogsTab";
 import { ReportGenerator } from "./ReportGenerator";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
+// ResultsDashboard v2 — guarded
 interface ResultsDashboardProps {
   result: ScanResult;
 }
