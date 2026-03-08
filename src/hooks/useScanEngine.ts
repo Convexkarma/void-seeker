@@ -159,6 +159,16 @@ export function useScanEngine() {
       const ws = new WebSocket(WS.scan(scanId));
       wsRef.current = ws;
 
+      // Close WS if it doesn't connect within 5s
+      const wsTimeout = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          try { ws.close(); } catch {}
+          wsRef.current = null;
+        }
+      }, 5000);
+
+      ws.onopen = () => clearTimeout(wsTimeout);
+
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
@@ -173,10 +183,12 @@ export function useScanEngine() {
       };
 
       ws.onerror = () => {
+        clearTimeout(wsTimeout);
         console.warn("WebSocket error — falling back to polling only");
       };
 
       ws.onclose = () => {
+        clearTimeout(wsTimeout);
         wsRef.current = null;
       };
     } catch (wsErr) {
