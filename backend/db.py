@@ -120,7 +120,7 @@ async def list_scans(limit: int = 100) -> List[Dict[str, Any]]:
 
 async def delete_scan_db(scan_id: str) -> bool:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             await db.execute("DELETE FROM scans WHERE id = ?", (scan_id,))
             await db.commit()
         return True
