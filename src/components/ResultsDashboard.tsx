@@ -18,9 +18,18 @@ interface ResultsDashboardProps {
 }
 
 export function ResultsDashboard({ result }: ResultsDashboardProps) {
-  const f = result.findings;
-  const critCount = f.vulnerabilities.filter(v => v.severity === "critical").length;
-  const highCount = f.vulnerabilities.filter(v => v.severity === "high").length;
+  const f = result.findings || {};
+  const vulns = f.vulnerabilities || [];
+  const subs = f.subdomains || [];
+  const ports = f.ports || [];
+  const dirs = f.directories || [];
+  const tech = f.technologies || [];
+  const screenshots = f.screenshots || [];
+  const secrets = f.secrets || [];
+  const logs = f.logs || [];
+  const dns = f.dns || { a: [], aaaa: [], mx: [], ns: [], txt: [], cname: [], whois: { registrar: "", createdDate: "", expiryDate: "", nameServers: [] }, spf: false, dmarc: false, dkim: false };
+  const critCount = vulns.filter(v => v.severity === "critical").length;
+  const highCount = vulns.filter(v => v.severity === "high").length;
 
   const tabs = [
     { value: "overview", label: "Overview" },
