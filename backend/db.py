@@ -158,7 +158,7 @@ async def search_scans(query: str) -> List[Dict[str, Any]]:
 
 async def get_stats() -> Dict[str, Any]:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             total = (await (await db.execute("SELECT COUNT(*) FROM scans")).fetchone())[0]
             status_rows = await (await db.execute("SELECT status, COUNT(*) FROM scans GROUP BY status")).fetchall()
             unique = (await (await db.execute("SELECT COUNT(DISTINCT domain) FROM scans")).fetchone())[0]
