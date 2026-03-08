@@ -1,5 +1,7 @@
-import { Shield, History, Settings, Activity, Menu, Terminal } from "lucide-react";
+import { Shield, History, Settings, Activity, Menu, Terminal, Wifi, WifiOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useEffect, useState } from "react";
+import { API } from "@/config/backend";
 
 interface TopNavProps {
   activeScans: number;
@@ -11,6 +13,26 @@ interface TopNavProps {
 }
 
 export function TopNav({ activeScans, onHistoryClick, onSettingsClick, onModulesClick, onTerminalToggle, showModulesButton }: TopNavProps) {
+  const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
+
+  useEffect(() => {
+    let mounted = true;
+    const check = async () => {
+      try {
+        const ok = await Promise.race([
+          fetch(API.health).then((r) => r.ok),
+          new Promise<false>((res) => setTimeout(() => res(false), 3000)),
+        ]);
+        if (mounted) setBackendStatus(ok ? "online" : "offline");
+      } catch {
+        if (mounted) setBackendStatus("offline");
+      }
+    };
+    check();
+    const interval = setInterval(check, 30000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, []);
+
   return (
     <header className="h-14 border-b border-border bg-card flex items-center justify-between px-3 sm:px-4">
       <div className="flex items-center gap-2 sm:gap-3">
@@ -29,6 +51,25 @@ export function TopNav({ activeScans, onHistoryClick, onSettingsClick, onModules
         <span className="text-xs font-mono text-muted-foreground hidden sm:inline">v2.0</span>
         <Badge variant="outline" className="text-[9px] font-mono px-1.5 py-0 border-primary/20 text-primary/60 hidden sm:inline-flex">
           LOCAL
+        </Badge>
+        <Badge
+          variant="outline"
+          className={`text-[9px] font-mono px-1.5 py-0 hidden sm:inline-flex items-center gap-1 ${
+            backendStatus === "online"
+              ? "border-green-500/30 text-green-500"
+              : backendStatus === "offline"
+              ? "border-destructive/30 text-destructive"
+              : "border-muted-foreground/30 text-muted-foreground"
+          }`}
+        >
+          {backendStatus === "online" ? (
+            <Wifi className="h-2.5 w-2.5" />
+          ) : backendStatus === "offline" ? (
+            <WifiOff className="h-2.5 w-2.5" />
+          ) : (
+            <Wifi className="h-2.5 w-2.5 animate-pulse" />
+          )}
+          {backendStatus === "online" ? "CONNECTED" : backendStatus === "offline" ? "OFFLINE" : "CHECKING"}
         </Badge>
       </div>
 
