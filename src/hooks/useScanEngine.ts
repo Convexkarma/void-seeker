@@ -132,8 +132,9 @@ export function useScanEngine() {
             if (res.ok) {
               const statusData = await res.json();
               setProgress(statusData.progress || 0);
-              if (statusData.active_module) {
-                setActiveModule(statusData.active_module);
+              const mod = statusData.active_module || statusData.current_module;
+              if (mod) {
+                setActiveModule(mod);
               }
 
               if (statusData.status === "completed" || statusData.status === "cancelled" || statusData.status === "failed") {
