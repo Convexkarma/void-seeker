@@ -1,5 +1,7 @@
-import { Shield, History, Settings, Activity, Menu, Terminal } from "lucide-react";
+import { Shield, History, Settings, Activity, Menu, Terminal, Wifi, WifiOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useEffect, useState } from "react";
+import { API } from "@/config/backend";
 
 interface TopNavProps {
   activeScans: number;
