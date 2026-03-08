@@ -16,7 +16,7 @@ COMMANDS = {
     "amass":        "amass enum -passive -d {domain} -o {out}/subdomains_am.txt",
     "httpx":        "httpx -l {out}/subdomains_all.txt -silent -status-code -title -tech-detect -o {out}/live_hosts.txt",
     "nmap":         "nmap -sV -sC -T4 --open -p- {domain} -oX {out}/nmap.xml",
-    "gobuster":     "gobuster dir -u http://{domain} -w {wordlist} -t {threads} -o {out}/dirs.txt -b 404,403",
+    "gobuster":     "gobuster dir -u http://{domain} -w {wordlist} -t {threads} -o {out}/dirs.txt --exclude-length 0 -b 404,403,301,302",
     "nuclei":       "nuclei -u http://{domain} -severity low,medium,high,critical -o {out}/nuclei.txt",
     "whatweb":      "whatweb -a 3 http://{domain} --log-json {out}/whatweb.json",
     "gowitness":    "gowitness file -f {out}/live_hosts.txt -P {out}/screenshots/",
