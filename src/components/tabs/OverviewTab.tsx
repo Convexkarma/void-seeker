@@ -1,26 +1,33 @@
-import { ScanResult } from "@/types/scan";
+import { ScanResult, ScanFindings } from "@/types/scan";
 import { Shield, Globe, Network, FolderSearch, Cpu, AlertTriangle } from "lucide-react";
+import { emptyFindings } from "@/lib/resultMapper";
 
 interface OverviewTabProps {
   result: ScanResult;
 }
 
 export function OverviewTab({ result }: OverviewTabProps) {
-  const f = result.findings;
-  const critCount = f.vulnerabilities.filter(v => v.severity === "critical").length;
-  const highCount = f.vulnerabilities.filter(v => v.severity === "high").length;
-  const medCount = f.vulnerabilities.filter(v => v.severity === "medium").length;
-  const lowCount = f.vulnerabilities.filter(v => v.severity === "low").length;
+  const f: ScanFindings = result.findings || emptyFindings;
+  const vulns = f.vulnerabilities || [];
+  const subs = f.subdomains || [];
+  const ports = f.ports || [];
+  const dirs = f.directories || [];
+  const tech = f.technologies || [];
+
+  const critCount = vulns.filter(v => v.severity === "critical").length;
+  const highCount = vulns.filter(v => v.severity === "high").length;
+  const medCount = vulns.filter(v => v.severity === "medium").length;
+  const lowCount = vulns.filter(v => v.severity === "low").length;
 
   // Simple attack surface score
-  const score = Math.min(100, critCount * 25 + highCount * 15 + medCount * 5 + lowCount * 2 + f.ports.filter(p => p.risk === "high").length * 10);
+  const score = Math.min(100, critCount * 25 + highCount * 15 + medCount * 5 + lowCount * 2 + ports.filter(p => p.risk === "high").length * 10);
 
   const cards = [
-    { label: "Subdomains", value: f.subdomains.length, icon: Globe, color: "text-terminal-blue" },
-    { label: "Open Ports", value: f.ports.length, icon: Network, color: "text-terminal-amber" },
-    { label: "Vulnerabilities", value: f.vulnerabilities.length, icon: AlertTriangle, color: "text-terminal-red" },
-    { label: "Directories", value: f.directories.length, icon: FolderSearch, color: "text-terminal-purple" },
-    { label: "Technologies", value: f.technologies.length, icon: Cpu, color: "text-terminal-cyan" },
+    { label: "Subdomains", value: subs.length, icon: Globe, color: "text-terminal-blue" },
+    { label: "Open Ports", value: ports.length, icon: Network, color: "text-terminal-amber" },
+    { label: "Vulnerabilities", value: vulns.length, icon: AlertTriangle, color: "text-terminal-red" },
+    { label: "Directories", value: dirs.length, icon: FolderSearch, color: "text-terminal-purple" },
+    { label: "Technologies", value: tech.length, icon: Cpu, color: "text-terminal-cyan" },
   ];
 
   return (
@@ -38,7 +45,6 @@ export function OverviewTab({ result }: OverviewTabProps) {
 
       {/* Attack surface + severity */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Score */}
         <div className="bg-secondary/50 border border-border rounded-md p-4">
           <h3 className="text-xs font-mono text-muted-foreground mb-3 uppercase">Attack Surface Score</h3>
           <div className="flex items-center gap-4">
@@ -51,7 +57,6 @@ export function OverviewTab({ result }: OverviewTabProps) {
           </div>
         </div>
 
-        {/* Severity breakdown */}
         <div className="bg-secondary/50 border border-border rounded-md p-4">
           <h3 className="text-xs font-mono text-muted-foreground mb-3 uppercase">Severity Breakdown</h3>
           <div className="space-y-2">
@@ -65,7 +70,7 @@ export function OverviewTab({ result }: OverviewTabProps) {
                 <div className={`w-2 h-2 rounded-full ${s.color}`} />
                 <span className="text-xs font-mono text-muted-foreground w-16">{s.label}</span>
                 <div className="flex-1 bg-muted rounded-full h-1.5">
-                  <div className={`h-full rounded-full ${s.color}`} style={{ width: `${f.vulnerabilities.length > 0 ? (s.count / f.vulnerabilities.length) * 100 : 0}%` }} />
+                  <div className={`h-full rounded-full ${s.color}`} style={{ width: `${vulns.length > 0 ? (s.count / vulns.length) * 100 : 0}%` }} />
                 </div>
                 <span className="text-xs font-mono text-card-foreground w-4 text-right">{s.count}</span>
               </div>
