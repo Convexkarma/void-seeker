@@ -18,20 +18,29 @@ interface ResultsDashboardProps {
 }
 
 export function ResultsDashboard({ result }: ResultsDashboardProps) {
-  const f = result.findings;
-  const critCount = f.vulnerabilities.filter(v => v.severity === "critical").length;
-  const highCount = f.vulnerabilities.filter(v => v.severity === "high").length;
+  const f = (result.findings || {}) as ScanResult["findings"];
+  const vulns = f.vulnerabilities || [];
+  const subs = f.subdomains || [];
+  const ports = f.ports || [];
+  const dirs = f.directories || [];
+  const tech = f.technologies || [];
+  const screenshots = f.screenshots || [];
+  const secrets = f.secrets || [];
+  const logs = f.logs || [];
+  const dns = f.dns || { a: [], aaaa: [], mx: [], ns: [], txt: [], cname: [], whois: { registrar: "", createdDate: "", expiryDate: "", nameServers: [] }, spf: false, dmarc: false, dkim: false };
+  const critCount = vulns.filter(v => v.severity === "critical").length;
+  const highCount = vulns.filter(v => v.severity === "high").length;
 
   const tabs = [
     { value: "overview", label: "Overview" },
-    { value: "subdomains", label: `Subs (${f.subdomains.length})` },
-    { value: "ports", label: `Ports (${f.ports.length})` },
-    { value: "vulns", label: `Vulns (${f.vulnerabilities.length})`, alert: critCount + highCount > 0 },
-    { value: "dirs", label: `Dirs (${f.directories.length})` },
-    { value: "tech", label: `Tech (${f.technologies.length})` },
-    { value: "screenshots", label: `Screenshots (${f.screenshots.length})` },
+    { value: "subdomains", label: `Subs (${subs.length})` },
+    { value: "ports", label: `Ports (${ports.length})` },
+    { value: "vulns", label: `Vulns (${vulns.length})`, alert: critCount + highCount > 0 },
+    { value: "dirs", label: `Dirs (${dirs.length})` },
+    { value: "tech", label: `Tech (${tech.length})` },
+    { value: "screenshots", label: `Screenshots (${screenshots.length})` },
     { value: "dns", label: "DNS" },
-    { value: "secrets", label: `Secrets (${f.secrets.length})` },
+    { value: "secrets", label: `Secrets (${secrets.length})` },
     { value: "logs", label: "Logs" },
   ];
 
@@ -73,15 +82,15 @@ export function ResultsDashboard({ result }: ResultsDashboardProps) {
 
         <div className="p-3 sm:p-4 overflow-x-auto">
           <TabsContent value="overview"><OverviewTab result={result} /></TabsContent>
-          <TabsContent value="subdomains"><SubdomainsTab subdomains={f.subdomains} /></TabsContent>
-          <TabsContent value="ports"><PortsTab ports={f.ports} /></TabsContent>
-          <TabsContent value="vulns"><VulnsTab vulnerabilities={f.vulnerabilities} /></TabsContent>
-          <TabsContent value="dirs"><DirectoriesTab directories={f.directories} /></TabsContent>
-          <TabsContent value="tech"><TechTab technologies={f.technologies} /></TabsContent>
-          <TabsContent value="screenshots"><ScreenshotsTab screenshots={f.screenshots} /></TabsContent>
-          <TabsContent value="dns"><DnsTab dns={f.dns} /></TabsContent>
-          <TabsContent value="secrets"><SecretsTab secrets={f.secrets} /></TabsContent>
-          <TabsContent value="logs"><LogsTab logs={f.logs} /></TabsContent>
+          <TabsContent value="subdomains"><SubdomainsTab subdomains={subs} /></TabsContent>
+          <TabsContent value="ports"><PortsTab ports={ports} /></TabsContent>
+          <TabsContent value="vulns"><VulnsTab vulnerabilities={vulns} /></TabsContent>
+          <TabsContent value="dirs"><DirectoriesTab directories={dirs} /></TabsContent>
+          <TabsContent value="tech"><TechTab technologies={tech} /></TabsContent>
+          <TabsContent value="screenshots"><ScreenshotsTab screenshots={screenshots} /></TabsContent>
+          <TabsContent value="dns"><DnsTab dns={dns} /></TabsContent>
+          <TabsContent value="secrets"><SecretsTab secrets={secrets} /></TabsContent>
+          <TabsContent value="logs"><LogsTab logs={logs} /></TabsContent>
         </div>
       </Tabs>
     </div>
