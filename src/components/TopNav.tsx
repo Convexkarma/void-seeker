@@ -13,6 +13,26 @@ interface TopNavProps {
 }
 
 export function TopNav({ activeScans, onHistoryClick, onSettingsClick, onModulesClick, onTerminalToggle, showModulesButton }: TopNavProps) {
+  const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
+
+  useEffect(() => {
+    let mounted = true;
+    const check = async () => {
+      try {
+        const ok = await Promise.race([
+          fetch(API.health).then((r) => r.ok),
+          new Promise<false>((res) => setTimeout(() => res(false), 3000)),
+        ]);
+        if (mounted) setBackendStatus(ok ? "online" : "offline");
+      } catch {
+        if (mounted) setBackendStatus("offline");
+      }
+    };
+    check();
+    const interval = setInterval(check, 30000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, []);
+
   return (
     <header className="h-14 border-b border-border bg-card flex items-center justify-between px-3 sm:px-4">
       <div className="flex items-center gap-2 sm:gap-3">
