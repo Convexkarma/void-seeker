@@ -51,7 +51,7 @@ async def init_db() -> None:
 
 async def save_scan(scan_data: Dict[str, Any]) -> bool:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             await db.execute(
                 """INSERT OR REPLACE INTO scans
                    (id, domain, status, created_at, updated_at, data)
