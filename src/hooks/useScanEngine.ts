@@ -109,6 +109,8 @@ export function useScanEngine() {
     setShowResults(false);
     setActiveModule("");
 
+    addLine({ module: "System", color: "terminal-cyan", text: "[*] Connecting to backend..." });
+
     // Map frontend module IDs to backend tool names
     const backendModules = mapModulesToBackend(config.modules);
 
@@ -116,7 +118,7 @@ export function useScanEngine() {
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
+      const timeout = setTimeout(() => controller.abort(), 3000);
 
       const res = await fetch(API.startScan, {
         method: "POST",
