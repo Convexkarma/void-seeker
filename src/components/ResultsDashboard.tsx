@@ -18,7 +18,7 @@ interface ResultsDashboardProps {
 }
 
 export function ResultsDashboard({ result }: ResultsDashboardProps) {
-  const f = result.findings || {};
+  const f = (result.findings || {}) as ScanResult["findings"];
   const vulns = f.vulnerabilities || [];
   const subs = f.subdomains || [];
   const ports = f.ports || [];
