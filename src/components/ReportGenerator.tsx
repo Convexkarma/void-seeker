@@ -75,10 +75,10 @@ export function ReportGenerator({ result }: ReportGeneratorProps) {
 }
 
 function generateClientMarkdown(result: ScanResult): string {
-  const f = result.findings || {};
-  const vulns = f.vulnerabilities || [];
-  const subs = f.subdomains || [];
-  const ports = f.ports || [];
+  const f = result.findings;
+  const vulns = f?.vulnerabilities || [];
+  const subs = f?.subdomains || [];
+  const ports = f?.ports || [];
 
   const lines = [
     `# AutoRecon Report — ${result.domain}`,

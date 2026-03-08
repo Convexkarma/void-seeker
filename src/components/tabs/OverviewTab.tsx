@@ -1,12 +1,13 @@
-import { ScanResult } from "@/types/scan";
+import { ScanResult, ScanFindings } from "@/types/scan";
 import { Shield, Globe, Network, FolderSearch, Cpu, AlertTriangle } from "lucide-react";
+import { emptyFindings } from "@/lib/resultMapper";
 
 interface OverviewTabProps {
   result: ScanResult;
 }
 
 export function OverviewTab({ result }: OverviewTabProps) {
-  const f = result.findings || {};
+  const f: ScanFindings = result.findings || emptyFindings;
   const vulns = f.vulnerabilities || [];
   const subs = f.subdomains || [];
   const ports = f.ports || [];
