@@ -144,7 +144,7 @@ async def get_scans_for_domain(domain: str) -> List[Dict[str, Any]]:
 
 async def search_scans(query: str) -> List[Dict[str, Any]]:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             cursor = await db.execute(
                 "SELECT data FROM scans WHERE domain LIKE ? ORDER BY created_at DESC LIMIT 50",
                 (f"%{query}%",),
