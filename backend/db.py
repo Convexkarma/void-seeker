@@ -96,7 +96,7 @@ async def update_scan(scan_id: str, updates: Dict[str, Any]) -> bool:
 
 async def get_scan(scan_id: str) -> Optional[Dict[str, Any]]:
     try:
-        async with await _connect() as db:
+        async with _connect() as db:
             cursor = await db.execute("SELECT data FROM scans WHERE id = ?", (scan_id,))
             row = await cursor.fetchone()
             return json.loads(row[0]) if row else None
