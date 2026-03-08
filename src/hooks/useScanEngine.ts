@@ -103,6 +103,22 @@ export function useScanEngine() {
   const startScan = useCallback(async (config: ScanConfig) => {
     if (!config.authorized) return;
 
+    // Quick health check BEFORE changing UI state — prevents freeze
+    try {
+      const healthOk = await Promise.race([
+        fetch(API.health, { method: "GET" }).then((r) => r.ok),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 2000)),
+      ]);
+      if (!healthOk) throw new Error("unreachable");
+    } catch {
+      setTerminalLines([
+        { module: "System", color: "terminal-red", text: "[Error] Backend is not reachable. Is the server running at the configured URL?" },
+        { module: "System", color: "terminal-amber", text: `[Info] Tried: ${API.health}` },
+      ]);
+      setStatus("failed");
+      return;
+    }
+
     setStatus("running");
     setProgress(0);
     setTerminalLines([]);
@@ -117,21 +133,19 @@ export function useScanEngine() {
     let scanId: string;
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
-
-      const res = await fetch(API.startScan, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          domain: config.domain,
-          modules: backendModules,
-          wordlist: config.wordlist,
-          threads: config.threads,
+      const res = await Promise.race([
+        fetch(API.startScan, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            domain: config.domain,
+            modules: backendModules,
+            wordlist: config.wordlist,
+            threads: config.threads,
+          }),
         }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Request timed out")), 5000)),
+      ]);
 
       if (!res.ok) {
         const errText = await res.text().catch(() => "Unknown error");
@@ -145,13 +159,10 @@ export function useScanEngine() {
     } catch (err: any) {
       console.error("Failed to start scan:", err);
       setStatus("failed");
-      const msg = err.name === "AbortError"
-        ? "Connection timed out. Is the backend running?"
-        : `Failed to connect to backend: ${err.message}. Is the backend running?`;
       addLine({
         module: "System",
         color: "terminal-red",
-        text: `[Error] ${msg}`,
+        text: `[Error] ${err.message}. Is the backend running?`,
       });
       return;
     }
